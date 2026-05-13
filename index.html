@@ -20,7 +20,11 @@
     *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{margin:0;padding:0;height:100%;background:#080c14;overscroll-behavior:none;-webkit-overflow-scrolling:touch}
     #root{min-height:100vh;min-height:-webkit-fill-available}
+    /* Prevent full-page scroll when keyboard opens on iOS — use visual viewport instead */
+    @supports (height: 100dvh){#root{min-height:100dvh}}
     ::-webkit-scrollbar{display:none}
+    /* Prevent number inputs from scrolling zooming on iOS */
+    input[type="number"]{font-size:16px!important}
     #splash{position:fixed;inset:0;background:#080c14;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity .5s ease}
     #splash.fade{opacity:0;pointer-events:none}
     .sp-logo{width:88px;height:88px;border-radius:24px;background:linear-gradient(135deg,#c9a84c,#7a5010);display:flex;align-items:center;justify-content:center;margin-bottom:24px;animation:glow 2s ease-in-out infinite}
@@ -17291,7 +17295,7 @@ const THEMES={
 }
 let T=THEMES.midnight;
 function accentText(){return T.onAccent||"#0d0900";}
-const APP_VERSION="v4.2.0";  // major.features.bugfixes
+const APP_VERSION="v4.3.3";  // A=grande B=menor C=bugs
 
 // ─────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -17410,11 +17414,7 @@ const SEED={
     Febrero:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Marzo:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Abril:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
-    Mayo:{ingresos:[{id:1,origen:"Trabajo",concepto:"Nómina",obs:"Mayo 2026",importe:1501.49,fijo:true}],gastos:[
-      {id:1,fecha:"2026-05-01",lugar:"STAY",obs:"Alquiler mensual",tipo:"Fijo",cat:"Vivienda",importe:342,ok:true},
-      {id:2,fecha:"2026-05-03",lugar:"Spotify",obs:"Plan familiar",tipo:"Fijo",cat:"Suscripciones",importe:3.5,ok:true},
-      {id:3,fecha:"2026-05-10",lugar:"Mercadona",obs:"Compra semanal",tipo:"Variable",cat:"Supermercado",importe:87.40,ok:false},
-    ],ahorro:0,presupuesto:1500},
+    Mayo:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Junio:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Julio:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Agosto:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
@@ -17423,10 +17423,7 @@ const SEED={
     Noviembre:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
     Diciembre:{ingresos:[],gastos:[],ahorro:0,presupuesto:1500},
   }},
-  debts:[
-    {id:1,entidad:"Tarjeta El Corte Inglés",concepto:"Financiera ECI",importe:141.79,cuota:null,hasta:"Pendiente",pagado:50.94,estado:"Activa",notas:""},
-    {id:2,entidad:"Préstamo Universitario PTT",concepto:"PTT cuota variable",importe:9750,cuota:39,hasta:"Variable",pagado:1170,estado:"Activa",notas:""},
-  ],
+  debts:[],
   entities:[],
   ahorros:[
     {id:1,nombre:"Ahorro general",saldo:0,meta:0,movimientos:[],isPrimary:true},
@@ -17516,10 +17513,49 @@ const calcSobrante=m=>{return sumI(m)-sumG(m);};
 // UI PRIMITIVES
 // ─────────────────────────────────────────────────────────────
 function Sheet({open,onClose,title,children}){
-  if(!open)return null;
   const CE=React.createElement;
+  const NAV_H=64; // bottom nav height in px
+  const [maxH,setMaxH]=React.useState("calc(92vh - 64px)");
+  React.useEffect(()=>{
+    if(!open)return;
+    function update(){
+      // Reserve space for the bottom nav + safe area so content is never hidden
+      const safeBottom=parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sab")||"0")||0;
+      const reserved=NAV_H+safeBottom+8;
+      if(window.visualViewport){
+        const vh=window.visualViewport.height;
+        setMaxH(Math.max(200,Math.round(vh*0.94-reserved))+"px");
+      }else{
+        setMaxH("calc(92vh - "+reserved+"px)");
+      }
+    }
+    if(window.visualViewport){
+      window.visualViewport.addEventListener("resize",update);
+      window.visualViewport.addEventListener("scroll",update);
+    }
+    update();
+    return()=>{
+      if(window.visualViewport){
+        window.visualViewport.removeEventListener("resize",update);
+        window.visualViewport.removeEventListener("scroll",update);
+      }
+    };
+  },[open]);
+  if(!open)return null;
   return CE("div",{onClick:onClose,style:{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}},
-    CE("div",{onClick:e=>e.stopPropagation(),className:"slide-up",style:{background:T.surface,borderRadius:"22px 22px 0 0",width:"100%",maxWidth:520,maxHeight:"92vh",overflowY:"auto",paddingBottom:44,border:`1px solid ${T.border}`,borderBottom:"none"}},
+    CE("div",{onClick:e=>e.stopPropagation(),className:"slide-up",style:{
+      background:T.surface,
+      borderRadius:"22px 22px 0 0",
+      width:"100%",
+      maxWidth:520,
+      maxHeight:maxH,
+      overflowY:"auto",
+      // Bottom padding = nav height + safe area so confirm button always clears the nav
+      paddingBottom:"calc("+NAV_H+"px + env(safe-area-inset-bottom, 8px) + 8px)",
+      border:`1px solid ${T.border}`,
+      borderBottom:"none",
+      transition:"max-height .15s ease-out",
+    }},
       CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"20px 20px 16px",borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:T.surface,zIndex:5}},
         CE("span",{style:{fontFamily:T.fontDisplay,fontSize:18,fontWeight:600,color:T.text}},title),
         CE("button",{onClick:onClose,style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,color:T.textSub,borderRadius:"50%",width:32,height:32,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}},
@@ -17589,6 +17625,92 @@ function Donut({gastos,size=140}){
 // ─────────────────────────────────────────────────────────────
 // GUIDE / TUTORIAL
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// CHANGELOG / NOTAS DE ACTUALIZACIÓN
+// ─────────────────────────────────────────────────────────────
+const CHANGELOG=[
+  {version:"v4.3.3",date:"Mayo 2026",tag:"Actual",changes:[
+    "Corrección: el menú inferior ya no tapa el botón de confirmar en los formularios",
+    "Sheet descuenta la altura del nav (64px) y el safe-area de iOS al calcular su altura máxima",
+  ]},
+  {version:"v4.3.2",date:"Mayo 2026",tag:"",changes:[
+    "Parche intermedio (sustituido por v4.3.3)",
+  ]},
+  {version:"v4.3.1",date:"Mayo 2026",tag:"",changes:[
+    "Versión escritorio deshabilitada temporalmente (foco en móvil)",
+    "Corrección: botón confirmar en monedero siempre visible",
+    "Corrección: botones editar/eliminar en ingresos con estilo correcto",
+    "Corrección: meta de ahorro en bolsillos ya no se desestructura en móvil",
+    "PDF descargado ahora coincide con la previsualización",
+    "WalletTab: categoría con autosugerencia y badge en historial",
+    "Ingresos: muestra fecha, badge Recurrente, diseño alineado con Gastos",
+  ]},
+  {version:"v4.3.0",date:"Mayo 2026",tag:"",changes:[
+    "Estado de fábrica limpio — sin datos de ejemplo",
+    "Corrección: pago de deuda ahora respeta el año de la fecha elegida",
+    "FAB colapsable en pestaña Mes — no tapa los movimientos",
+    "Botón de importar ya no muestra el nombre del mes",
+    "Teclado en iOS ya no hunde el formulario (Sheet adaptativo)",
+    "Botones editar/eliminar en Ingresos iguales que en Gastos",
+    "Efectivo: categorías visibles en el formulario de nuevo movimiento",
+    "Notas de actualización (esta pantalla)",
+  ]},
+  {version:"v4.2.0",date:"Mayo 2026",tag:"",changes:[
+    "Importación Revolut: descripción real y categorías automáticas",
+    "Ingreso vinculado a bolsillo descuenta del saldo del bolsillo",
+    "Ahorro general visible en la pantalla de Inicio",
+    "Log de errores: códigos en rojo (código) y dorado (informativo)",
+    "Categorías para el monedero de efectivo",
+    "Icono y botones más grandes en móvil",
+    "CAT_KEYWORDS ampliado con Glovo, Ryanair, Shein, Temu y más",
+  ]},
+  {version:"v4.1.0",date:"Mayo 2026",tag:"",changes:[
+    "Pantalla individual por bolsillo con historial completo",
+    "Botón para descargar log de errores como JSON",
+    "Editar ingreso: nueva fecha mueve el movimiento al mes/año correcto",
+    "Editar gasto: campos para vincular/desvincular deuda o bolsillo",
+    "Configuración desktop reorganizada en secciones claras",
+    "Tutorial a pantalla completa con pasos y consejos",
+  ]},
+  {version:"v4.0.0",date:"Mayo 2026",tag:"",changes:[
+    "Pestaña Bolsillos independiente en navegación",
+    "Año correcto al añadir pagos de deuda con fecha pasada",
+    "Aviso visual en pantalla cuando salta un error",
+    "Categorías personalizadas en Configuración",
+    "Sobrante mensual mostrado con sugerencia de ahorro",
+    "Corrección E016: bolsillo no encontrado por mismatch de tipo ID",
+  ]},
+];
+
+function ChangelogModal({onClose}){
+  const CE=React.createElement;
+  return CE("div",{style:{position:"fixed",inset:0,background:T.bg,zIndex:300,display:"flex",flexDirection:"column",overflowY:"auto"}},
+    CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 20px",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:0,zIndex:5}},
+      CE("div",null,
+        CE("div",{style:{fontFamily:T.fontDisplay,fontSize:18,fontWeight:700,color:T.text}},"Notas de actualización"),
+        CE("div",{style:{fontSize:11,color:T.textDim,marginTop:2}},"Historial de cambios de Casa Flow")
+      ),
+      CE("button",{onClick:onClose,style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:"50%",width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.textSub}},CE(Icon,{name:"close",size:15}))
+    ),
+    CE("div",{style:{padding:"20px 20px 40px",maxWidth:560,margin:"0 auto",width:"100%"}},
+      CHANGELOG.map((v,vi)=>CE("div",{key:vi,style:{marginBottom:24}},
+        CE("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:10}},
+          CE("div",{style:{fontFamily:T.fontDisplay,fontSize:17,fontWeight:700,color:T.text}},v.version),
+          v.tag&&CE("span",{style:{fontSize:10,fontWeight:700,background:T.gold,color:accentText(),borderRadius:6,padding:"2px 8px",letterSpacing:.5}},"ACTUAL"),
+          CE("span",{style:{fontSize:11,color:T.textDim}},v.date)
+        ),
+        CE("div",{style:{background:T.surface,borderRadius:14,padding:14,border:`1px solid ${vi===0?T.gold+"44":T.border}`}},
+          v.changes.map((c,ci)=>CE("div",{key:ci,style:{display:"flex",alignItems:"flex-start",gap:8,marginBottom:ci<v.changes.length-1?8:0}},
+            CE("div",{style:{width:6,height:6,borderRadius:"50%",background:vi===0?T.gold:T.textDim,flexShrink:0,marginTop:5}}),
+            CE("div",{style:{fontSize:13,color:vi===0?T.text:T.textSub,lineHeight:1.5}},c)
+          ))
+        )
+      ))
+    )
+  );
+}
+
+
 function GuideModal({onClose,simpleMode}){
   const [step,setStep]=useState(0);
   const CE=React.createElement;
@@ -17756,7 +17878,8 @@ function ImportPreview({rows,setRows,onConfirm,onClose,selMonth}){
       // Footer
       CE("div",{style:{padding:"12px 16px 28px",borderTop:`1px solid ${T.border}`,flexShrink:0}},
         CE(Btn,{onClick:()=>onConfirm(true),disabled:selected.length===0},
-          CE(Icon,{name:"check",size:16,color:accentText()}),`Importar ${selected.length} seleccionados en ${selMonth}`
+          CE(Icon,{name:"check",size:16,color:accentText()}),
+          `Importar ${selected.length} movimiento${selected.length!==1?"s":""} seleccionado${selected.length!==1?"s":""}`
         )
       )
     )
@@ -17776,118 +17899,108 @@ function PdfPreviewModal({onClose,onDownload,data,year,debts,cashBalance,fromMon
   const activeDebts=debts.filter(function(d){return d.estado==="Activa";});
   const allGastos=range.reduce(function(acc,mes){return acc.concat((data[year]&&data[year][mes]&&data[year][mes].gastos)||[]);},[]);
   const catData=catMapFn(allGastos);
-  // A4 page styles (simulated at ~595px wide)
-  const pageW=595,pagePad=36;
-  const pageStyle={
-    background:"#ffffff",width:pageW,minHeight:842,margin:"0 auto",
-    padding:pagePad+"px",boxSizing:"border-box",
-    fontFamily:"'Arial',sans-serif",color:"#1a1a2e",
-    boxShadow:"0 8px 40px rgba(0,0,0,.5)",
-  };
-  const row=function(a,b,c,d,bold,bg){
-    return CE("div",{style:{display:"flex",padding:"5px 8px",background:bg||"transparent",borderBottom:"1px solid #e0e0e0"}},
-      CE("div",{style:{flex:2,fontSize:9,fontWeight:bold?"bold":"normal",color:bold?"#111":"#333"}},a||""),
-      CE("div",{style:{flex:1,fontSize:9,textAlign:"right",fontWeight:bold?"bold":"normal",color:bold?"#111":T.green}},b||""),
-      CE("div",{style:{flex:1,fontSize:9,textAlign:"right",fontWeight:bold?"bold":"normal",color:bold?"#111":T.red}},c||""),
-      CE("div",{style:{flex:1,fontSize:9,textAlign:"right",fontWeight:bold?"bold":"normal",color:bold?"#111":(d&&d.startsWith("-"))?T.red:T.green}},d||"")
-    );
-  };
+  const totCat=allGastos.reduce(function(s,g){return s+g.importe;},0);
 
-  return CE("div",{onClick:onClose,style:{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:260,display:"flex",flexDirection:"column",alignItems:"center",backdropFilter:"blur(6px)",overflowY:"auto",padding:"20px 0 60px"}},
-    // Toolbar
-    CE("div",{onClick:function(e){e.stopPropagation();},style:{width:"100%",maxWidth:pageW+40,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 20px 14px"}},
-      CE("div",{style:{color:"#fff",fontSize:14,fontWeight:600}},"Previsualización del PDF — "+fromMonth+" - "+toMonth+" "+year),
-      CE("div",{style:{display:"flex",gap:10}},
-        CE("button",{onClick:onClose,style:{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",borderRadius:10,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:600}},"Cancelar"),
-        CE("button",{onClick:onDownload,style:{background:"linear-gradient(135deg,#c9a84c,#e8c96a)",border:"none",borderRadius:10,padding:"8px 16px",color:"#0d0900",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6}},CE(Icon,{name:"download",size:14,color:"#0d0900"}),"Descargar PDF")
+  // Dark theme matching the actual jsPDF output
+  const pg={bg:"#080c14",surface:"#111827",border:"#2d3748",gold:"#c9a84c",green:"#22c97a",red:"#f05c5c",text:"#e8eef6",sub:"#8fa0b8",dim:"#4a5c70"};
+
+  const thCell=function(txt){return CE("div",{style:{padding:"6px 8px",background:pg.surface,color:pg.gold,fontSize:9,fontWeight:700,borderBottom:"1px solid "+pg.border,textTransform:"uppercase",letterSpacing:.4}},txt);};
+  const tdCell=function(txt,color,align){return CE("div",{style:{padding:"5px 8px",color:color||pg.sub,fontSize:9,borderBottom:"1px solid "+pg.border,textAlign:align||"left",fontFamily:"monospace"}},txt);};
+
+  return CE("div",{onClick:onClose,style:{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:260,display:"flex",flexDirection:"column",overflowY:"auto",backdropFilter:"blur(6px)"}},
+    // Sticky toolbar
+    CE("div",{onClick:function(e){e.stopPropagation();},style:{position:"sticky",top:0,zIndex:5,background:"rgba(8,12,20,.96)",borderBottom:"1px solid "+pg.border,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",backdropFilter:"blur(8px)"}},
+      CE("div",{style:{color:pg.text,fontSize:14,fontWeight:600}},"Previsualización — "+fromMonth+" a "+toMonth+" "+year),
+      CE("div",{style:{display:"flex",gap:8}},
+        CE("button",{onClick:onClose,style:{background:pg.surface,border:"1px solid "+pg.border,borderRadius:8,padding:"7px 12px",color:pg.sub,cursor:"pointer",fontSize:13,fontWeight:600}},"Cancelar"),
+        CE("button",{onClick:onDownload,style:{background:"linear-gradient(135deg,#c9a84c,#e8c96a)",border:"none",borderRadius:8,padding:"7px 14px",color:"#0d0900",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}},CE(Icon,{name:"download",size:14,color:"#0d0900"}),"Descargar PDF")
       )
     ),
-    // A4 page
-    CE("div",{onClick:function(e){e.stopPropagation();},style:pageStyle},
-      // Header block
-      CE("div",{style:{background:"#080c14",borderRadius:8,padding:"16px 20px",marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+    // Preview content
+    CE("div",{onClick:function(e){e.stopPropagation();},style:{maxWidth:520,margin:"0 auto",width:"100%",padding:"16px 16px 40px"}},
+      // Header (mirrors jsPDF dark header)
+      CE("div",{style:{background:pg.bg,borderRadius:10,padding:"16px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid "+pg.border}},
         CE("div",null,
-          CE("div",{style:{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:"#c9a84c",letterSpacing:-.5}},"Casa Flow"),
-          CE("div",{style:{fontSize:9,color:"#8fa0b8",marginTop:3,letterSpacing:1}},"INFORME FINANCIERO "+year+" · "+fromMonth.toUpperCase()+" – "+toMonth.toUpperCase())
+          CE("div",{style:{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:pg.gold,letterSpacing:-.5}},"Casa Flow"),
+          CE("div",{style:{fontSize:9,color:pg.sub,marginTop:2,letterSpacing:1}},"INFORME "+year+" · "+fromMonth.toUpperCase()+" – "+toMonth.toUpperCase())
         ),
         CE("div",{style:{textAlign:"right"}},
-          CE("div",{style:{fontSize:9,color:"#8fa0b8"}},"Generado: "+new Date().toLocaleDateString("es-ES")),
-          CE("div",{style:{fontSize:9,color:"#8fa0b8",marginTop:2}},"Periodo: "+fromMonth+" – "+toMonth)
+          CE("div",{style:{fontSize:9,color:pg.dim}},"Generado: "+new Date().toLocaleDateString("es-ES"))
         )
       ),
-      // Summary boxes
-      CE("div",{style:{display:"flex",gap:10,marginBottom:20}},
-        [{label:"Ingresos totales",value:eur(tI),color:"#22c97a"},{label:"Gastos totales",value:eur(tG),color:"#f05c5c"},{label:"Balance",value:(tB>=0?"+":"")+eur(tB),color:tB>=0?"#22c97a":"#f05c5c"}].map(function(x){
-          return CE("div",{key:x.label,style:{flex:1,border:"1px solid #e8e8e8",borderRadius:8,padding:"10px 12px",background:"#fafafa"}},
-            CE("div",{style:{fontSize:8,color:"#888",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}},x.label),
-            CE("div",{style:{fontSize:14,fontWeight:700,color:x.color}},x.value)
+      // Summary cards (mirrors jsPDF summary boxes)
+      CE("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}},
+        [{l:"Ingresos",v:eur(tI),c:pg.green},{l:"Gastos",v:eur(tG),c:pg.red},{l:"Balance",v:(tB>=0?"+":"")+eur(tB),c:tB>=0?pg.green:pg.red}].map(function(x){
+          return CE("div",{key:x.l,style:{background:pg.surface,border:"1px solid "+pg.border,borderRadius:8,padding:"10px 10px"}},
+            CE("div",{style:{fontSize:8,color:pg.dim,textTransform:"uppercase",letterSpacing:.5,marginBottom:3}},x.l),
+            CE("div",{style:{fontSize:13,fontWeight:700,color:x.c,fontFamily:"monospace"}},x.v)
           );
-        }).concat(
-          cashBalance!==0?[CE("div",{key:"efectivo",style:{flex:1,border:"1px solid #e8e8e8",borderRadius:8,padding:"10px 12px",background:"#fafafa"}},
-            CE("div",{style:{fontSize:8,color:"#888",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}},"Efectivo en cartera"),
-            CE("div",{style:{fontSize:14,fontWeight:700,color:"#c9a84c"}},eur(cashBalance))
-          )]:[]
-        )
+        })
       ),
-      // Monthly table
-      CE("div",{style:{marginBottom:20}},
-        CE("div",{style:{fontSize:11,fontWeight:700,color:"#111",marginBottom:6,paddingBottom:4,borderBottom:"2px solid #c9a84c",letterSpacing:.3}},"RESUMEN MENSUAL"),
-        row("Mes","Ingresos","Gastos","Balance",true,"#f5f5f5"),
+      cashBalance!==0&&CE("div",{style:{background:pg.surface,border:"1px solid "+pg.border,borderRadius:8,padding:"8px 12px",marginBottom:14,display:"flex",justifyContent:"space-between"}},
+        CE("span",{style:{fontSize:10,color:pg.sub}},"Efectivo en cartera"),
+        CE("span",{style:{fontSize:12,fontWeight:700,color:pg.gold,fontFamily:"monospace"}},eur(cashBalance))
+      ),
+      // Monthly table (mirrors jsPDF autoTable)
+      CE("div",{style:{background:pg.surface,borderRadius:10,overflow:"hidden",marginBottom:14,border:"1px solid "+pg.border}},
+        CE("div",{style:{padding:"8px 10px",background:pg.bg,borderBottom:"1px solid "+pg.border}},
+          CE("span",{style:{fontSize:10,fontWeight:700,color:pg.gold,letterSpacing:.5}},"RESUMEN MENSUAL")
+        ),
+        CE("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",background:pg.bg}},
+          ["MES","INGRESOS","GASTOS","BALANCE"].map(function(h){return thCell(h);})),
         range.map(function(mes){
           var m=(data[year]&&data[year][mes])||{};var i=sumI(m),g=sumG(m),b=i-g;
-          return row(mes,"+"+eur(i),"-"+eur(g),(b>=0?"+":"")+eur(b),false,null);
+          return CE("div",{key:mes,style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr"}},
+            tdCell(mes,pg.text),
+            tdCell("+"+eur(i),pg.green,"right"),
+            tdCell(eur(g),pg.red,"right"),
+            tdCell((b>=0?"+":"")+eur(b),b>=0?pg.green:pg.red,"right")
+          );
         }),
-        row("TOTAL","+"+eur(tI),"-"+eur(tG),(tB>=0?"+":"")+eur(tB),true,"#f5f5f5")
+        CE("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",background:pg.bg+"cc"}},
+          tdCell("TOTAL",pg.gold),
+          tdCell("+"+eur(tI),pg.green,"right"),
+          tdCell(eur(tG),pg.red,"right"),
+          tdCell((tB>=0?"+":"")+eur(tB),tB>=0?pg.green:pg.red,"right")
+        )
       ),
       // Categories
-      catData.length>0&&CE("div",{style:{marginBottom:20}},
-        CE("div",{style:{fontSize:11,fontWeight:700,color:"#111",marginBottom:6,paddingBottom:4,borderBottom:"2px solid #c9a84c",letterSpacing:.3}},"GASTOS POR CATEGORIA"),
-        CE("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+      catData.length>0&&CE("div",{style:{marginBottom:14}},
+        CE("div",{style:{fontSize:10,fontWeight:700,color:pg.gold,marginBottom:8,letterSpacing:.5}},"GASTOS POR CATEGORÍA"),
+        CE("div",{style:{display:"flex",flexDirection:"column",gap:6}},
           catData.slice(0,8).map(function(arr){
-            var cat=arr[0],v=arr[1];
-            var ci=catInfo(cat);
-            var total=allGastos.reduce(function(s,g){return s+g.importe;},0);
-            var pct=total>0?Math.round(v/total*100):0;
-            return CE("div",{key:cat,style:{border:"1px solid #e8e8e8",borderRadius:6,padding:"7px 10px",minWidth:100,flex:"0 0 auto"}},
-              CE("div",{style:{display:"flex",alignItems:"center",gap:4,marginBottom:3}},
-                CE("div",{style:{width:8,height:8,borderRadius:2,background:ci.color,flexShrink:0}}),
-                CE("div",{style:{fontSize:9,color:"#555"}},cat)
-              ),
-              CE("div",{style:{fontSize:12,fontWeight:700,color:ci.color}},eur(v)),
-              CE("div",{style:{fontSize:8,color:"#888"}},pct+"% del total"),
-              CE("div",{style:{height:3,background:"#eee",borderRadius:3,marginTop:4,overflow:"hidden"}},
-                CE("div",{style:{height:"100%",background:ci.color,width:pct+"%",borderRadius:3}})
-              )
+            var cat=arr[0],v=arr[1];var ci=catInfo(cat);
+            var pct=totCat>0?Math.round(v/totCat*100):0;
+            return CE("div",{key:cat,style:{background:pg.surface,borderRadius:8,padding:"9px 12px",border:"1px solid "+pg.border,display:"flex",alignItems:"center",gap:10}},
+              CE("div",{style:{width:8,height:8,borderRadius:2,background:ci.color,flexShrink:0}}),
+              CE("div",{style:{flex:1,fontSize:12,color:pg.text}},cat),
+              CE("div",{style:{fontSize:12,fontWeight:700,color:ci.color,fontFamily:"monospace"}},eur(v)),
+              CE("div",{style:{fontSize:9,color:pg.dim,minWidth:36,textAlign:"right"}},pct+"%")
             );
           })
         )
       ),
       // Debts
-      activeDebts.length>0&&CE("div",{style:{marginBottom:20}},
-        CE("div",{style:{fontSize:11,fontWeight:700,color:"#111",marginBottom:6,paddingBottom:4,borderBottom:"2px solid #c9a84c",letterSpacing:.3}},"DEUDAS ACTIVAS"),
-        CE("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+      activeDebts.length>0&&CE("div",{style:{marginBottom:14}},
+        CE("div",{style:{fontSize:10,fontWeight:700,color:pg.gold,marginBottom:8,letterSpacing:.5}},"DEUDAS ACTIVAS"),
+        CE("div",{style:{display:"flex",flexDirection:"column",gap:6}},
           activeDebts.map(function(d){
             var pct=Math.min(d.pagado/d.importe*100,100);
-            return CE("div",{key:d.id,style:{border:"1px solid #e8e8e8",borderRadius:6,padding:"8px 10px",flex:"1 0 160px"}},
-              CE("div",{style:{fontSize:10,fontWeight:700,color:"#222",marginBottom:2}},d.entidad),
-              CE("div",{style:{fontSize:9,color:"#666",marginBottom:5}},d.concepto||""),
-              CE("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
-                CE("span",{style:{fontSize:9,color:"#888"}},"Pendiente"),
-                CE("span",{style:{fontSize:10,fontWeight:700,color:"#f05c5c"}},eur(d.importe-d.pagado))
+            return CE("div",{key:d.id,style:{background:pg.surface,borderRadius:8,padding:"10px 12px",border:"1px solid "+pg.border}},
+              CE("div",{style:{fontWeight:700,fontSize:13,color:pg.text,marginBottom:2}},d.entidad),
+              CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
+                CE("span",{style:{fontSize:10,color:pg.sub}},"Pendiente: "+eur(d.importe-d.pagado)),
+                CE("span",{style:{fontSize:10,color:pg.dim}},Math.round(pct)+"% pagado")
               ),
-              CE("div",{style:{height:4,background:"#eee",borderRadius:4,overflow:"hidden"}},
-                CE("div",{style:{height:"100%",background:"linear-gradient(90deg,#22c97a,#c9a84c)",width:pct+"%"}})
-              ),
-              CE("div",{style:{fontSize:8,color:"#aaa",marginTop:2}},Math.round(pct)+"% pagado de "+eur(d.importe))
+              CE("div",{style:{height:4,background:pg.border,borderRadius:4,overflow:"hidden"}},
+                CE("div",{style:{height:"100%",background:"linear-gradient(90deg,"+pg.green+","+pg.gold+")",width:pct+"%"}})
+              )
             );
           })
         )
       ),
-      // Footer
-      CE("div",{style:{borderTop:"1px solid #ddd",paddingTop:10,marginTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        CE("div",{style:{fontSize:8,color:"#aaa"}},"Casa Flow · Informe generado automáticamente · "+new Date().toLocaleDateString("es-ES")),
-        CE("div",{style:{fontSize:8,color:"#aaa"}},"Página 1")
-      )
+      // Footer note
+      CE("div",{style:{textAlign:"center",fontSize:10,color:pg.dim,marginTop:4}},"Casa Flow · Informe generado automáticamente · "+new Date().toLocaleDateString("es-ES"))
     )
   );
 }
@@ -17985,9 +18098,10 @@ function WalletTab({cashLog,cashBalance,setCashLog,setCashBalance,toast$,fontSiz
     const amount=parseFloat(form.importe);
     if(!form.concepto||isNaN(amount)||amount<=0){toast$("Completa todos los campos","err");return;}
     const isOut=form.tipo==="salida";
-    const entry={id:Date.now(),fecha:new Date().toISOString().slice(0,10),concepto:form.concepto,importe:amount,tipo:form.tipo};
+    if(isOut&&(cashBalance||0)<amount){toast$("Saldo insuficiente en el monedero","err");return;}
+    const entry={id:Date.now(),fecha:new Date().toISOString().slice(0,10),concepto:form.concepto,cat:form.cat||"Otros",importe:amount,tipo:form.tipo};
     setCashLog(function(prev){return [entry].concat(prev||[]);});
-    setCashBalance(function(prev){return (prev||0)+(isOut?-amount:amount);});
+    setCashBalance(function(prev){return Math.max(0,(prev||0)+(isOut?-amount:amount));});
     setForm({tipo:"entrada"});setShowModal(false);toast$("Efectivo registrado");
   }
 
@@ -17997,7 +18111,7 @@ function WalletTab({cashLog,cashBalance,setCashLog,setCashBalance,toast$,fontSiz
     toast$("Eliminado","info");
   }
 
-  var selSt=function(active,ac){return {flex:1,padding:"10px",border:"2px solid "+(active?(ac||T.gold):T.border),borderRadius:12,background:active?""+( ac||T.gold)+"18":T.surfaceAlt,cursor:"pointer",fontWeight:600,fontSize:13,color:active?(ac||T.gold):T.textSub};};
+  var selSt=function(active,ac){return {flex:1,padding:"11px",border:"2px solid "+(active?(ac||T.gold):T.border),borderRadius:12,background:active?""+(ac||T.gold)+"22":T.surfaceAlt,cursor:"pointer",fontWeight:700,fontSize:14,color:active?(ac||T.gold):T.textSub};};
 
   return CE("div",{className:"fade-in",style:{background:T.bg}},
     CE("div",{style:{background:"linear-gradient(135deg,"+T.gold+"22,"+T.gold+"08)",border:"1px solid "+T.gold+"44",borderRadius:20,padding:"22px 20px",marginBottom:16,textAlign:"center"}},
@@ -18024,30 +18138,46 @@ function WalletTab({cashLog,cashBalance,setCashLog,setCashBalance,toast$,fontSiz
         CE("span",{style:{fontSize:13,fontWeight:600}},"Historial de movimientos")
       ),
       (cashLog||[]).length===0&&CE("div",{style:{textAlign:"center",padding:"24px 0",color:T.textDim,fontSize:13}},"Sin movimientos registrados"),
-      (cashLog||[]).map(function(e){return CE("div",{key:e.id,style:{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid "+T.border}},
-        CE("div",{style:{width:36,height:36,borderRadius:10,background:e.tipo==="entrada"?(T.greenGlow||T.green+"14"):(T.redGlow||T.red+"14"),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
-          CE(Icon,{name:e.tipo==="entrada"?"trending":"trendingDown",size:16,color:e.tipo==="entrada"?T.green:T.red})
-        ),
-        CE("div",{style:{flex:1}},
-          CE("div",{style:{fontSize:14,fontWeight:600,color:T.text}},e.concepto),
-          CE("div",{style:{fontSize:11,color:T.textDim}},fdate(e.fecha))
-        ),
-        CE("div",{style:{textAlign:"right",flexShrink:0}},
-          CE("div",{style:{fontFamily:T.fontDisplay,fontSize:15,fontWeight:700,color:e.tipo==="entrada"?T.green:T.red}},(e.tipo==="entrada"?"+":"-")+eur(e.importe)),
-          CE("button",{onClick:function(){delEntry(e.id,e.importe,e.tipo);},style:{background:"none",border:"none",cursor:"pointer",padding:"2px 0",display:"block",marginLeft:"auto"}},CE(Icon,{name:"trash",size:13,color:T.textDim}))
-        )
-      );})
+      (cashLog||[]).map(function(e){
+        var ci=catInfo(e.cat||"Otros");
+        return CE("div",{key:e.id,style:{display:"flex",alignItems:"center",gap:10,padding:"11px 0",borderBottom:"1px solid "+T.border}},
+          CE("div",{style:{width:38,height:38,borderRadius:10,background:e.tipo==="entrada"?(T.greenGlow||T.green+"14"):(T.redGlow||T.red+"14"),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+            CE(Icon,{name:e.tipo==="entrada"?"trending":"trendingDown",size:16,color:e.tipo==="entrada"?T.green:T.red})
+          ),
+          CE("div",{style:{flex:1,minWidth:0}},
+            CE("div",{style:{fontSize:14,fontWeight:600,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},e.concepto),
+            CE("div",{style:{display:"flex",gap:5,marginTop:2,alignItems:"center"}},
+              CE("span",{style:{fontSize:10,background:ci.bg,color:ci.color,borderRadius:5,padding:"1px 6px",fontWeight:600}},e.cat||"Otros"),
+              CE("span",{style:{fontSize:10,color:T.textDim}},fdate(e.fecha))
+            )
+          ),
+          CE("div",{style:{textAlign:"right",flexShrink:0,display:"flex",alignItems:"center",gap:8}},
+            CE("div",{style:{fontFamily:T.fontDisplay,fontSize:15,fontWeight:700,color:e.tipo==="entrada"?T.green:T.red}},(e.tipo==="entrada"?"+":"-")+eur(e.importe)),
+            CE("button",{onClick:function(){delEntry(e.id,e.importe,e.tipo);},style:{background:T.surfaceAlt,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:"7px 9px",display:"flex",alignItems:"center",flexShrink:0}},CE(Icon,{name:"trash",size:15,color:T.red}))
+          )
+        );
+      })
     ),
     showModal&&CE(Sheet,{open:true,onClose:function(){setShowModal(false);setForm({tipo:"entrada"});},title:"Movimiento de efectivo"},
       CE(Field,{label:"Tipo"},
         CE("div",{style:{display:"flex",gap:8}},
-          CE("button",{onClick:function(){setForm(function(f){return Object.assign({},f,{tipo:"entrada"});});},style:selSt(form.tipo==="entrada",T.green)},"Entrada"),
-          CE("button",{onClick:function(){setForm(function(f){return Object.assign({},f,{tipo:"salida"});});},style:selSt(form.tipo==="salida",T.red)},"Salida")
+          CE("button",{onClick:function(){setForm(function(f){return Object.assign({},f,{tipo:"entrada"});});},style:selSt(form.tipo==="entrada",T.green)},CE(Icon,{name:"plus",size:15,color:form.tipo==="entrada"?T.green:T.textSub})," Entrada"),
+          CE("button",{onClick:function(){setForm(function(f){return Object.assign({},f,{tipo:"salida"});});},style:selSt(form.tipo==="salida",T.red)},CE(Icon,{name:"minus",size:15,color:form.tipo==="salida"?T.red:T.textSub})," Salida")
         )
       ),
-      CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, mercado, etc.",value:form.concepto||"",onChange:function(e){setForm(function(f){return Object.assign({},f,{concepto:e.target.value});});}})),
-      CE(Field,{label:"Importe (EUR) *"},CE(Inp,{type:"number",step:"0.01",min:"0",placeholder:"0,00",value:form.importe||"",onChange:function(e){setForm(function(f){return Object.assign({},f,{importe:e.target.value});});}})),
-      CE("button",{onClick:addEntry,style:{width:"100%",background:"linear-gradient(135deg,"+T.gold+","+T.gold+"aa)",border:"none",borderRadius:14,color:accentText(),padding:13,fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}},CE(Icon,{name:"check",size:16,color:accentText()}),"Registrar movimiento")
+      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.fecha||new Date().toISOString().slice(0,10),onChange:function(e){setForm(function(f){return Object.assign({},f,{fecha:e.target.value});});}})),
+      CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, mercado, gasolinera...",value:form.concepto||"",onChange:function(e){var v=e.target.value;setForm(function(f){return Object.assign({},f,{concepto:v,cat:f.catEdited?f.cat:suggestCat(v)});});}})),
+      CE(Field,{label:"Categoría"},
+        CE(Sel,{value:form.cat||"Otros",onChange:function(e){setForm(function(f){return Object.assign({},f,{cat:e.target.value,catEdited:true});});}},
+          allCats().map(function(c){return CE("option",{key:c.name,value:c.name},c.name);})
+        )
+      ),
+      CE(Field,{label:"Importe (€) *"},CE(Inp,{type:"number",step:"0.01",min:"0.01",placeholder:"0,00",value:form.importe||"",onChange:function(e){setForm(function(f){return Object.assign({},f,{importe:e.target.value});});}})),
+      CE("div",{style:{paddingTop:4,paddingBottom:24}},
+        CE("button",{onClick:addEntry,style:{width:"100%",background:"linear-gradient(135deg,"+T.gold+","+T.gold+"aa)",border:"none",borderRadius:14,color:accentText(),padding:"15px",fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 16px "+T.gold+"44"}},
+          CE(Icon,{name:"check",size:20,color:accentText()}),"Registrar movimiento"
+        )
+      )
     )
   );
 }
@@ -18278,12 +18408,14 @@ function BolsillosTab({ahorros,depositAhorro,withdrawAhorro,addAhorroBolsillo,se
         )
       ),
       // Meta editor
-      !isPrimary&&CE("div",{style:{background:T.surface,borderRadius:14,padding:"12px 14px",marginBottom:14,border:`1px solid ${T.border}`}},
-        CE("div",{style:{fontSize:12,color:T.textSub,marginBottom:8,fontWeight:600}},"Meta de ahorro (opcional)"),
-        CE("div",{style:{display:"flex",gap:8}},
-          CE("input",{type:"number",min:"0",step:"100",placeholder:"Importe meta...",value:movForm["meta_val"]!==undefined?movForm["meta_val"]:(bolsillo.meta||""),onChange:e=>setMovForm(f=>({...f,meta_val:e.target.value})),style:{flex:1,background:T.bgMid,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,padding:"9px 12px",fontSize:13,fontFamily:T.font}}),
-          CE("button",{onClick:function(){var m=parseFloat(movForm["meta_val"]||0);setAhorrosDirect(function(arr){var i=arr.findIndex(function(x){return x.id===bolsillo.id;});if(i>=0)arr[i]={...arr[i],meta:m};});toast$("Meta actualizada");},style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 14px",cursor:"pointer",color:T.text,fontSize:13,fontWeight:600}},"Guardar"),
-          !isPrimary&&CE("button",{onClick:function(){if(confirm("¿Eliminar este bolsillo? El saldo no se recuperará."))setAhorrosDirect(function(arr){return arr.filter(function(x){return x.id!==bolsillo.id;});});setSelBolsilloId(null);toast$("Bolsillo eliminado","info");},style:{background:"none",border:`1px solid ${T.red}44`,borderRadius:8,padding:"9px 12px",cursor:"pointer",color:T.red,fontSize:13}},CE(Icon,{name:"trash",size:14,color:T.red}))
+      !isPrimary&&CE("div",{style:{background:T.surface,borderRadius:14,padding:"14px",marginBottom:14,border:`1px solid ${T.border}`}},
+        CE("div",{style:{fontSize:12,color:T.textSub,marginBottom:10,fontWeight:600}},"Meta de ahorro (opcional)"),
+        CE("div",{style:{display:"flex",flexDirection:"column",gap:10}},
+          CE("input",{type:"number",min:"0",step:"100",placeholder:"Importe meta (ej: 3000)",value:movForm["meta_val"]!==undefined?movForm["meta_val"]:(bolsillo.meta||""),onChange:e=>setMovForm(f=>({...f,meta_val:e.target.value})),style:{width:"100%",background:T.bgMid,border:`1px solid ${T.border}`,borderRadius:10,color:T.text,padding:"12px 14px",fontSize:15,fontFamily:T.font,boxSizing:"border-box"}}),
+          CE("div",{style:{display:"flex",gap:10}},
+            CE("button",{onClick:function(){var m=parseFloat(movForm["meta_val"]||0);setAhorrosDirect(function(arr){var idx=arr.findIndex(function(x){return x.id===bolsillo.id;});if(idx>=0){var copy=[...arr];copy[idx]={...copy[idx],meta:m};return copy;}return arr;});toast$("Meta actualizada");},style:{flex:1,background:`linear-gradient(135deg,${T.gold},${T.gold}cc)`,border:"none",borderRadius:10,padding:"12px",cursor:"pointer",color:accentText(),fontWeight:700,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:6}},CE(Icon,{name:"check",size:16,color:accentText()}),"Guardar meta"),
+            CE("button",{onClick:function(){if(window.confirm("¿Eliminar este bolsillo? El saldo no se recuperará.")){setAhorrosDirect(function(arr){return arr.filter(function(x){return x.id!==bolsillo.id;});});setSelBolsilloId(null);toast$("Bolsillo eliminado","info");}},style:{background:`${T.red}14`,border:`1px solid ${T.red}44`,borderRadius:10,padding:"12px 14px",cursor:"pointer",color:T.red,display:"flex",alignItems:"center",justifyContent:"center"}},CE(Icon,{name:"trash",size:16,color:T.red}))
+          )
         )
       ),
       // Full movement history
@@ -18382,7 +18514,7 @@ function safe(name,component,props){
 }
 
 // DESKTOP LAYOUT
-function DesktopLayout({tab,setTab,navItems,simpleMode,showCash,children}){
+function DesktopLayout({tab,setTab,navItems,simpleMode,showCash,onChangelog,onGuide,children}){
   const CE=React.createElement;
   const sideItems=[
     {key:"dashboard",icon:"chart",label:"Inicio"},
@@ -18401,7 +18533,12 @@ function DesktopLayout({tab,setTab,navItems,simpleMode,showCash,children}){
       ),
       sideItems.map(n=>CE("button",{key:n.key,onClick:()=>setTab(n.key),style:{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 18px",border:"none",background:tab===n.key?`${T.gold}14`:"none",cursor:"pointer",color:tab===n.key?T.gold:T.textSub,borderLeft:`3px solid ${tab===n.key?T.gold:"transparent"}`,transition:"all .15s",fontSize:14,fontWeight:tab===n.key?600:400,textAlign:"left"}},
         CE(Icon,{name:n.icon,size:17,color:tab===n.key?T.gold:T.textSub}),n.label
-      ))
+      )),
+      // Sidebar footer
+      CE("div",{style:{marginTop:"auto",padding:"16px 14px 0",borderTop:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:6}},
+        onGuide&&CE("button",{onClick:onGuide,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"none",border:`1px solid ${T.border}`,borderRadius:10,cursor:"pointer",color:T.textSub,fontSize:12,fontWeight:500}},CE(Icon,{name:"question",size:14,color:T.textSub}),"Guía de uso"),
+        onChangelog&&CE("button",{onClick:onChangelog,style:{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:`${T.gold}14`,border:`1px solid ${T.gold}33`,borderRadius:10,cursor:"pointer",color:T.gold,fontSize:12,fontWeight:600}},CE(Icon,{name:"info",size:14,color:T.gold}),"Notas de actualización")
+      )
     ),
     CE("div",{style:{marginLeft:220,flex:1,minWidth:0}},
       CE("div",{style:{maxWidth:860,margin:"0 auto",padding:"28px 24px 60px"}},children)
@@ -18410,6 +18547,38 @@ function DesktopLayout({tab,setTab,navItems,simpleMode,showCash,children}){
 }
 
 // MAIN APP
+// ─────────────────────────────────────────────────────────────
+// FLOATING FAB — expandable add button for mobile MES tab
+// ─────────────────────────────────────────────────────────────
+function FloatingFAB({onGasto,onIngreso}){
+  const CE=React.createElement;
+  const [open,setOpen]=React.useState(false);
+  // Close when tapping outside
+  React.useEffect(()=>{
+    if(!open)return;
+    const close=()=>setOpen(false);
+    const t=setTimeout(()=>document.addEventListener("click",close,{once:true}),50);
+    return()=>{clearTimeout(t);document.removeEventListener("click",close);};
+  },[open]);
+  return CE("div",{style:{position:"fixed",bottom:80,right:14,zIndex:85,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:10}},
+    // Sub-actions (only visible when open)
+    open&&CE("div",{className:"scale-in",style:{display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end"}},
+      CE("button",{onClick:e=>{e.stopPropagation();setOpen(false);onIngreso();},style:{display:"flex",alignItems:"center",gap:8,background:`${T.surface}f5`,border:`2px solid ${T.green}66`,borderRadius:24,padding:"9px 16px 9px 12px",cursor:"pointer",boxShadow:"0 4px 18px rgba(0,0,0,.5)",backdropFilter:"blur(8px)"}},
+        CE("div",{style:{width:30,height:30,borderRadius:"50%",background:T.green,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},CE(Icon,{name:"plus",size:16,color:"#fff"})),
+        CE("span",{style:{fontFamily:T.fontDisplay,fontWeight:700,fontSize:14,color:T.green}}),"Ingreso"
+      ),
+      CE("button",{onClick:e=>{e.stopPropagation();setOpen(false);onGasto();},style:{display:"flex",alignItems:"center",gap:8,background:`${T.surface}f5`,border:`2px solid ${T.gold}66`,borderRadius:24,padding:"9px 16px 9px 12px",cursor:"pointer",boxShadow:"0 4px 18px rgba(0,0,0,.5)",backdropFilter:"blur(8px)"}},
+        CE("div",{style:{width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${T.gold},${T.gold}aa)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},CE(Icon,{name:"minus",size:16,color:accentText()})),
+        CE("span",{style:{fontFamily:T.fontDisplay,fontWeight:700,fontSize:14,color:T.gold}}),"Gasto"
+      )
+    ),
+    // Main FAB button
+    CE("button",{onClick:e=>{e.stopPropagation();setOpen(o=>!o);},style:{width:52,height:52,borderRadius:"50%",background:open?T.surfaceAlt:`linear-gradient(135deg,${T.gold},${T.gold}bb)`,border:open?`2px solid ${T.border}`:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 6px 22px ${T.gold}44`,transition:"all .25s",transform:open?"rotate(45deg)":"none"}},
+      CE(Icon,{name:"plus",size:24,color:open?T.textSub:accentText()})
+    )
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 function App(){
   const CE=React.createElement;
@@ -18429,10 +18598,10 @@ function App(){
     return years.length>0?Math.max(cy,years[0]):cy;
   });
   const [tab,setTab]=useState("dashboard");
-  const [isDesktop,setIsDesktop]=useState(()=>typeof window!=="undefined"&&window.innerWidth>=900);
-  const forceMobile=settings.forceMobile||false;
-  const useDesktop=isDesktop&&!forceMobile;
-  useEffect(()=>{const fn=()=>setIsDesktop(window.innerWidth>=900);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn);},[]);
+  const [isDesktop,setIsDesktop]=useState(false); // Desktop temporalmente deshabilitado
+  const forceMobile=true; // Siempre móvil hasta nueva indicación
+  const useDesktop=false;
+  useEffect(()=>{},[]);
   const [selMonth,setSelMonth]=useState(MONTHS[new Date().getMonth()]||"Mayo");
   const [subTab,setSubTab]=useState("gastos");
   const [modal,setModal]=useState(null);
@@ -18442,6 +18611,7 @@ function App(){
   const [searchQ,setSearchQ]=useState("");
   const [toast,setToast]=useState(null);
   const [showGuide,setShowGuide]=useState(false);
+  const [showChangelog,setShowChangelog]=useState(false);
   const [debtModal,setDebtModal]=useState(null);
   const [showAddDebt,setShowAddDebt]=useState(false);
   const [debtForm,setDebtForm]=useState({});
@@ -18662,14 +18832,18 @@ function App(){
     if(!amount||amount<=0){logErr("E007","importe="+form.pago);toast$("Importe inválido","err");return;}
     const fechaPago=form.pagofecha||new Date().toISOString().slice(0,10);
     let mesDestino=selMonth;
-    try{const dd=new Date(fechaPago+"T12:00:00");if(!isNaN(dd.getTime()))mesDestino=MONTHS[dd.getMonth()]||selMonth;}
-    catch(_){logErr("E015","pagofecha: "+fechaPago);}
+    let yearDestino=year;
+    try{
+      const dd=new Date(fechaPago+"T12:00:00");
+      if(!isNaN(dd.getTime())){mesDestino=MONTHS[dd.getMonth()]||selMonth;yearDestino=dd.getFullYear();}
+    }catch(_){logErr("E015","pagofecha: "+fechaPago);}
     const gastoDeuda={id:Date.now(),fecha:fechaPago,lugar:"Pago: "+(debtPago.entidad||""),obs:debtPago.concepto||"",tipo:"Fijo",cat:"Deuda",importe:amount,ok:true};
-    mutData(d=>{ensure(d,year,mesDestino);d[year][mesDestino].gastos=[...d[year][mesDestino].gastos,gastoDeuda];});
+    mutData(d=>{ensure(d,yearDestino,mesDestino);d[yearDestino][mesDestino].gastos=[...d[yearDestino][mesDestino].gastos,gastoDeuda];});
     setAppState(s=>({...s,debts:s.debts.map(d=>d.id===debtPago.id?{...d,pagado:Math.min(d.pagado+amount,d.importe),estado:d.pagado+amount>=d.importe?"Pagada":"Activa"}:d)}));
     if(mesDestino!==selMonth)setSelMonth(mesDestino);
+    if(yearDestino!==year){setYear(yearDestino);}
     setDebtModal(null);setDebtPago(null);setForm({});setModal(null);
-    toast$("Pago de "+eur(amount)+" registrado en "+mesDestino);
+    toast$("Pago de "+eur(amount)+" registrado en "+mesDestino+(yearDestino!==year?" "+yearDestino:""));
   }
 
   function saveEditDebt(){
@@ -18941,7 +19115,7 @@ function App(){
   const selBtnSt=(active,activeC)=>({flex:1,padding:"10px 8px",border:`2px solid ${active?(activeC||T.gold):T.border}`,borderRadius:12,background:active?`${activeC||T.gold}18`:T.surfaceAlt,cursor:"pointer",fontWeight:600,fontSize:13,color:active?(activeC||T.gold):T.textSub});
   const fs=fontSize==="large"?1.12:1;
 
-  var desktopContent=useDesktop&&CE(DesktopLayout,{tab,setTab,navItems,simpleMode,showCash},
+  var desktopContent=useDesktop&&CE(DesktopLayout,{tab,setTab,navItems,simpleMode,showCash,onChangelog:()=>setShowChangelog(true),onGuide:()=>setShowGuide(true)},
     CE("div",{style:{color:T.text}},
       tab==="dashboard"&&(simpleMode
         ?CE(SimpleHome,{data,year,selMonth,setSelMonth,setTab,cashBalance,showCash,debts,fontSize,ahorros})
@@ -19034,13 +19208,25 @@ function App(){
             ),
             CE("div",{style:{maxHeight:"60vh",overflowY:"auto"}},
               subTab==="gastos"&&filtGastos.map(g=>CE(GastoItem,{key:g.id,g,onToggle:toggleOk,onEdit:openEditGasto,onDelete:delGasto,simpleMode,fontSize})),
-              subTab==="ingresos"&&sortedIngresos.filter(i=>{const q=searchQ.trim().toLowerCase();if(!q)return true;const qN=parseFloat(q.replace(",","."));return(!isNaN(qN)&&Math.abs(i.importe-qN)<0.015)||(i.concepto+i.obs).toLowerCase().includes(q);}).map(i=>
+              subTab==="ingresos"&&sortedIngresos.filter(i=>{const q=searchQ.trim().toLowerCase();if(!q)return true;const qN=parseFloat(q.replace(",","."));return(!isNaN(qN)&&Math.abs(i.importe-qN)<0.015)||(i.concepto+(i.obs||"")+i.origen).toLowerCase().includes(q);}).map(i=>
                 CE("div",{key:i.id,style:{background:T.surface,borderRadius:14,padding:"12px 14px",border:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:12,marginBottom:8}},
-                  CE("div",{style:{width:38,height:38,borderRadius:12,background:T.greenGlow||`${T.green}14`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},CE(Icon,{name:"trending",size:16,color:T.green})),
-                  CE("div",{style:{flex:1}},CE("div",{style:{fontWeight:600,fontSize:14}},i.concepto),CE("div",{style:{fontSize:11,color:T.textSub}},i.origen)),
-                  CE("div",{style:{textAlign:"right"}},
+                  CE("div",{style:{width:40,height:40,borderRadius:12,background:`${T.green}18`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${T.green}44`}},
+                    CE(Icon,{name:"trending",size:17,color:T.green})
+                  ),
+                  CE("div",{style:{flex:1,minWidth:0}},
+                    CE("div",{style:{fontWeight:600,fontSize:14,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},i.concepto),
+                    CE("div",{style:{fontSize:11,color:T.textSub,marginBottom:2}},i.origen+(i.obs?(" · "+i.obs):"")),
+                    CE("div",{style:{display:"flex",gap:5,flexWrap:"wrap"}},
+                      CE("span",{style:{fontSize:10,color:T.textDim}},fdate(i.fecha)),
+                      i.fijo&&CE("span",{style:{fontSize:10,background:T.blueGlow||`${T.blue}18`,color:T.blue,borderRadius:5,padding:"1px 6px",fontWeight:600}},"Recurrente")
+                    )
+                  ),
+                  CE("div",{style:{textAlign:"right",flexShrink:0}},
                     CE("div",{style:{fontFamily:T.fontDisplay,fontWeight:700,fontSize:15,color:T.green}},"+"+eur(i.importe)),
-                    CE("div",{style:{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}},CE("button",{onClick:()=>openEditIngreso(i),style:{background:"none",border:"none",cursor:"pointer",padding:2}},CE(Icon,{name:"edit",size:14,color:T.textDim})),CE("button",{onClick:()=>delIngreso(i.id),style:{background:"none",border:"none",cursor:"pointer",padding:2}},CE(Icon,{name:"trash",size:14,color:T.textDim})))
+                    CE("div",{style:{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}},
+                      CE("button",{onClick:()=>openEditIngreso(i),style:{background:T.surfaceAlt,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:"7px 10px",display:"flex",alignItems:"center"}},CE(Icon,{name:"edit",size:16,color:T.textDim})),
+                      CE("button",{onClick:()=>delIngreso(i.id),style:{background:T.surfaceAlt,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:"7px 10px",display:"flex",alignItems:"center"}},CE(Icon,{name:"trash",size:16,color:T.red}))
+                    )
                   )
                 )
               ),
@@ -19190,22 +19376,27 @@ function App(){
   return CE("div",{style:{fontFamily:T.font,background:T.bg,minHeight:"100vh",color:T.text,maxWidth:useDesktop?"100%":480,margin:useDesktop?0:"0 auto",position:"relative",overflowX:"hidden"}},
 
     // ── HEADER ──
-    CE("div",{style:{padding:"52px 18px 14px",background:`linear-gradient(180deg,${T.bgMid} 0%,transparent 100%)`}},
-      CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        CE("div",null,
-          CE("div",{style:{display:"flex",alignItems:"baseline",gap:8}},
-            CE("div",{style:{fontFamily:T.fontDisplay,fontSize:22*fs,fontWeight:700,letterSpacing:"-.5px"}},"Casa Flow"),
-            CE("span",{style:{fontSize:9,color:T.gold,fontWeight:700,letterSpacing:.5,background:T.gold+"18",borderRadius:5,padding:"1px 6px",fontFamily:"monospace"}},APP_VERSION)
+    CE("div",{style:{padding:"52px 16px 12px",background:`linear-gradient(180deg,${T.bgMid} 0%,transparent 100%)`}},
+      CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
+        // Title block — never shrinks
+        CE("div",{style:{minWidth:0,flex:"0 1 auto"}},
+          CE("div",{style:{display:"flex",alignItems:"baseline",gap:6,flexWrap:"nowrap"}},
+            CE("div",{style:{fontFamily:T.fontDisplay,fontSize:20*fs,fontWeight:700,letterSpacing:"-.5px",whiteSpace:"nowrap"}},"Casa Flow"),
+            CE("span",{style:{fontSize:9,color:T.gold,fontWeight:700,letterSpacing:.5,background:T.gold+"18",borderRadius:5,padding:"1px 5px",fontFamily:"monospace",flexShrink:0}},APP_VERSION)
           ),
-          CE("div",{style:{fontSize:11,color:T.textSub,letterSpacing:1}},simpleMode?"FINANZAS · "+year:"FINANZAS DOMÉSTICAS · "+year)
+          CE("div",{style:{fontSize:10,color:T.textSub,letterSpacing:.8,marginTop:2}},simpleMode?"FINANZAS · "+year:"FINANZAS DOMÉSTICAS · "+year)
         ),
-        CE("div",{style:{display:"flex",gap:8,alignItems:"center"}},
-          showCash&&CE("button",{onClick:()=>setTab("wallet"),style:{background:tab==="wallet"?T.gold:`${T.gold}22`,border:`1.5px solid ${T.gold}66`,borderRadius:12,padding:"7px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,color:tab==="wallet"?"#0d0900":T.gold,fontWeight:700,fontSize:12,transition:"all .2s"}},
-            CE(Icon,{name:"wallet",size:15,color:tab==="wallet"?"#0d0900":T.gold}),
-            eur(cashBalance)
+        // Right side — row of icon buttons only (no text overflow)
+        CE("div",{style:{display:"flex",gap:6,alignItems:"center",flexShrink:0}},
+          showCash&&CE("button",{onClick:()=>setTab("wallet"),style:{background:tab==="wallet"?T.gold:`${T.gold}22`,border:`1.5px solid ${T.gold}55`,borderRadius:10,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,color:tab==="wallet"?"#0d0900":T.gold,fontWeight:700,fontSize:11,transition:"all .2s",flexShrink:0}},
+            CE(Icon,{name:"wallet",size:14,color:tab==="wallet"?"#0d0900":T.gold}),
+            CE("span",{style:{maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},eur(cashBalance))
           ),
-          CE("button",{onClick:()=>setShowGuide(true),style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:12,padding:"7px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,color:T.textSub}},
-            CE(Icon,{name:"question",size:15,color:T.textSub})
+          CE("button",{onClick:()=>setShowGuide(true),style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:10,width:32,height:32,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+            CE(Icon,{name:"question",size:14,color:T.textSub})
+          ),
+          CE("button",{onClick:()=>setShowChangelog(true),title:"Notas de actualización",style:{background:`${T.gold}18`,border:`1px solid ${T.gold}44`,borderRadius:10,padding:"5px 8px",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}},
+            CE("span",{style:{fontFamily:"monospace",fontSize:9,fontWeight:700,color:T.gold,letterSpacing:.4}},APP_VERSION)
           )
         )
       )
@@ -19369,8 +19560,8 @@ function App(){
             CE("div",{style:{textAlign:"right",flexShrink:0}},
               CE("div",{style:{fontFamily:T.fontDisplay,fontWeight:700,fontSize:15*fs,color:T.green}},"+"+eur(i.importe)),
               CE("div",{style:{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}},
-                CE("button",{onClick:()=>openEditIngreso(i),style:{background:"none",border:"none",cursor:"pointer",padding:2}},CE(Icon,{name:"edit",size:14,color:T.textDim})),
-                CE("button",{onClick:()=>delIngreso(i.id),style:{background:"none",border:"none",cursor:"pointer",padding:2}},CE(Icon,{name:"trash",size:14,color:T.textDim}))
+                CE("button",{onClick:()=>openEditIngreso(i),style:{background:T.surfaceAlt,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:"7px 10px",display:"flex",alignItems:"center"}},CE(Icon,{name:"edit",size:16,color:T.textDim})),
+                CE("button",{onClick:()=>delIngreso(i.id),style:{background:T.surfaceAlt,border:"1px solid "+T.border,borderRadius:8,cursor:"pointer",padding:"7px 10px",display:"flex",alignItems:"center"}},CE(Icon,{name:"trash",size:16,color:T.red}))
               )
             )
           )),
@@ -19555,17 +19746,8 @@ function App(){
       )
     ),
 
-    // ── FLOATING ADD BUTTONS (mobile Mes tab only) ──
-    !useDesktop&&tab==="mes"&&CE("div",{style:{position:"fixed",bottom:76,right:16,display:"flex",flexDirection:"column",gap:8,zIndex:80,alignItems:"flex-end"}},
-      CE("div",{style:{display:"flex",alignItems:"center",gap:8}},
-        CE("div",{style:{background:`${T.surface}ee`,borderRadius:10,padding:"4px 10px",fontSize:12,fontWeight:600,color:T.green,backdropFilter:"blur(4px)",border:`1px solid ${T.green}44`}},"Ingreso"),
-        CE("button",{onClick:()=>{setForm({});setModal("ingreso");},style:{width:44,height:44,borderRadius:"50%",background:T.surface,border:`2px solid ${T.green}44`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(0,0,0,.5)",flexShrink:0}},CE(Icon,{name:"plus",size:20,color:T.green}))
-      ),
-      CE("div",{style:{display:"flex",alignItems:"center",gap:8}},
-        CE("div",{style:{background:`${T.surface}ee`,borderRadius:10,padding:"4px 10px",fontSize:12,fontWeight:600,color:accentText(),backdropFilter:"blur(4px)",border:`1px solid ${T.gold}44`,background:`${T.gold}22`}},"Gasto"),
-        CE("button",{onClick:()=>{setForm({cat:suggestCat(""),tipo:"Variable"});setModal("gasto");},style:{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${T.gold},${T.gold}bb)`,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 6px 20px ${T.gold}55`,flexShrink:0}},CE(Icon,{name:"minus",size:24,color:accentText()}))
-      )
-    ),
+    // ── FLOATING ADD BUTTONS (mobile Mes tab only) — colapsable FAB ──
+    !useDesktop&&tab==="mes"&&CE(FloatingFAB,{onGasto:()=>{setForm({cat:suggestCat(""),tipo:"Variable"});setModal("gasto");},onIngreso:()=>{setForm({});setModal("ingreso");},accentText,T}),
 
     // ── BOTTOM NAV (mobile only) ──
     !useDesktop&&CE("nav",{style:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:`${T.surface}f2`,backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0)"}},
@@ -19746,24 +19928,18 @@ function App(){
     ),
 
     // ── Efectivo ──
-    CE("div",{onClick:()=>setModal(null),style:{display:modal==="efectivo"?"flex":"none",position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(4px)"}},
-      CE("div",{onClick:e=>e.stopPropagation(),className:"scale-in",style:{background:T.surface,borderRadius:20,width:"100%",maxWidth:420,padding:"20px 20px 28px",border:`1px solid ${T.border}`,boxShadow:"0 24px 60px rgba(0,0,0,.5)"}},
-        CE("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}},
-          CE("span",{style:{fontFamily:T.fontDisplay,fontSize:18,fontWeight:600}},`Efectivo — Saldo: ${eur(cashBalance)}`),
-          CE("button",{onClick:()=>setModal(null),style:{background:T.surfaceAlt,border:`1px solid ${T.border}`,color:T.textSub,borderRadius:"50%",width:32,height:32,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}},CE(Icon,{name:"close",size:14}))
-        ),
-        CE(Field,{label:"Tipo"},
-          CE("div",{style:{display:"flex",gap:8}},
-            CE("button",{onClick:()=>setForm(f=>({...f,cashTipo:"entrada"})),style:selBtnSt((form.cashTipo||"entrada")==="entrada",T.green)},"Entrada (recibo)"),
-            CE("button",{onClick:()=>setForm(f=>({...f,cashTipo:"salida"})),style:selBtnSt(form.cashTipo==="salida",T.red)},"Salida (pago)")
-          )
-        ),
-        CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.cashFecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,cashFecha:e.target.value}))})),
-        CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, pago en efectivo...",value:form.cashConcepto||"",onChange:e=>setForm(f=>({...f,cashConcepto:e.target.value,cashCat:f.cashCatEdited?f.cashCat:suggestCat(e.target.value)}))})),
-        CE(Field,{label:"Categoría"},CE(Sel,{value:form.cashCat||"Otros",onChange:e=>setForm(f=>({...f,cashCat:e.target.value,cashCatEdited:true}))},allCats().map(c=>CE("option",{key:c.name,value:c.name},c.name)))),
-        CE(Field,{label:"Importe (€) *"},CE(Inp,{type:"number",step:"0.01",min:"0",placeholder:"0,00",value:form.cashImporte||"",onChange:e=>setForm(f=>({...f,cashImporte:e.target.value}))},)),
-        CE("button",{onClick:addCashEntry,style:btnSt(`linear-gradient(135deg,${T.gold},${T.gold}aa)`)},CE(Icon,{name:"cash",size:16,color:accentText()}),"Registrar")
-      )
+    CE(Sheet,{open:modal==="efectivo",onClose:()=>{setModal(null);setForm({});},title:`Efectivo — Saldo: ${eur(cashBalance)}`},
+      CE(Field,{label:"Tipo"},
+        CE("div",{style:{display:"flex",gap:8}},
+          CE("button",{onClick:()=>setForm(f=>({...f,cashTipo:"entrada"})),style:selBtnSt((form.cashTipo||"entrada")==="entrada",T.green)},"+ Entrada (recibo)"),
+          CE("button",{onClick:()=>setForm(f=>({...f,cashTipo:"salida"})),style:selBtnSt(form.cashTipo==="salida",T.red)},"− Salida (pago)")
+        )
+      ),
+      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.cashFecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,cashFecha:e.target.value}))})),
+      CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, pago en efectivo...",value:form.cashConcepto||"",onChange:e=>setForm(f=>({...f,cashConcepto:e.target.value,cashCat:f.cashCatEdited?f.cashCat:suggestCat(e.target.value)}))})),
+      CE(Field,{label:"Categoría"},CE(Sel,{value:form.cashCat||"Otros",onChange:e=>setForm(f=>({...f,cashCat:e.target.value,cashCatEdited:true}))},allCats().map(c=>CE("option",{key:c.name,value:c.name},c.name)))),
+      CE(Field,{label:"Importe (€) *"},CE(Inp,{type:"number",step:"0.01",min:"0.01",placeholder:"0,00",value:form.cashImporte||"",onChange:e=>setForm(f=>({...f,cashImporte:e.target.value}))})),
+      CE("button",{onClick:addCashEntry,style:btnSt(`linear-gradient(135deg,${T.gold},${T.gold}aa)`)},CE(Icon,{name:"cash",size:16,color:accentText()}),"Registrar movimiento")
     ),
 
     // ── Reset confirm ──
@@ -19787,6 +19963,7 @@ function App(){
 
     // ── Guide ──
     showGuide&&CE(GuideModal,{onClose:()=>setShowGuide(false),simpleMode}),
+    showChangelog&&CE(ChangelogModal,{onClose:()=>setShowChangelog(false)}),
 
     // ── Toast ──
     toast&&CE(Toast,{msg:toast.msg,type:toast.type}),
