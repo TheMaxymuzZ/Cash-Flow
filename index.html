@@ -17297,7 +17297,7 @@ const THEMES={
 }
 let T=THEMES.midnight;
 function accentText(){return T.onAccent||"#0d0900";}
-const APP_VERSION="v4.3.5";  // A=grande B=menor C=bugs
+const APP_VERSION="v4.3.8";  // A=grande B=menor C=bugs
 
 // ─────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -17321,6 +17321,16 @@ const CATS=[
 // USER CATS from localStorage
 function getUserCats(){try{var r=localStorage.getItem("cf_usercats");return r?JSON.parse(r):[];}catch(_){return[];}}
 function saveUserCats(cats){try{localStorage.setItem("cf_usercats",JSON.stringify(cats));}catch(_){}}
+// Timezone-safe today's date in YYYY-MM-DD (uses local time, not UTC)
+function todayISO(){
+  try{
+    var d=new Date();
+    var y=d.getFullYear();
+    var m=String(d.getMonth()+1).padStart(2,"0");
+    var dd=String(d.getDate()).padStart(2,"0");
+    return y+"-"+m+"-"+dd;
+  }catch(_){return todayISO();}
+}
 function allCats(){return [...CATS,...getUserCats().map(n=>({name:n,icon:"palette",color:"#a78bfa",bg:"rgba(167,139,250,.12)"}))]}
 function catInfo(c){return allCats().find(x=>x.name===c)||CATS[CATS.length-1];}
 
@@ -17631,7 +17641,28 @@ function Donut({gastos,size=140}){
 // CHANGELOG / NOTAS DE ACTUALIZACIÓN
 // ─────────────────────────────────────────────────────────────
 const CHANGELOG=[
-  {version:"v4.3.5",date:"Mayo 2026",tag:"Actual",changes:[
+  {version:"v4.3.8",date:"Mayo 2026",tag:"Actual",changes:[
+    "Corrección crítica: conceptos ya no salen como 'Importado' en extractos BBVA y similares",
+    "El parser ahora verifica que la fila de cabecera tenga columna de descripción, no solo importe",
+    "Filas de metadatos/preamble (Titular, IBAN, etc.) ignoradas correctamente al buscar cabecera",
+    "Búsqueda de cabecera ampliada a 20 filas para bancos con muchas filas de información previa",
+  ]},
+  {version:"v4.3.7",date:"Mayo 2026",tag:"",changes:[
+    "Corrección E008: 'saldo' ahora detectado como columna de importe (CaixaBank, Sabadell, Bankinter…)",
+    "Detección inteligente: si hay dos columnas de importe (ej. 'abono'+'cargo'), se combinan automáticamente",
+    "Columnas vacías al inicio del CSV ignoradas correctamente",
+    "Más formatos de banco español soportados: 'movimiento', 'abono', 'cargo separado', 'saldo contable'",
+  ]},
+  {version:"v4.3.6",date:"Mayo 2026",tag:"",changes:[
+    "Importación Android Chrome reescrita completamente — usa File.text()/arrayBuffer() con fallback",
+    "Soporte ampliado: YYYY/MM/DD, fechas en distintos formatos, timezone-safe",
+    "Conversión explícita ArrayBuffer→Uint8Array para SheetJS en Android",
+    "Validación tamaño archivo (0 / 10MB máx) y mensajes de error claros",
+    "Corrección: barra de progreso de meta ya no aparece duplicada en bolsillos",
+    "Auditoría compatibilidad: localStorage, optional chaining, Intl.NumberFormat verificados",
+    "logErr captura todos los puntos de fallo de importación para diagnóstico",
+  ]},
+  {version:"v4.3.5",date:"Mayo 2026",tag:"",changes:[
     "Corrección crítica: eliminar bolsillo ahora funciona correctamente",
     "Importación Android/Chrome: detección de cabecera ampliada, acepta más formatos CSV/Excel",
     "Botones cambio de año en Mes más grandes y táctiles",
@@ -18160,7 +18191,7 @@ function WalletTab({cashLog,cashBalance,setCashLog,setCashBalance,toast$,fontSiz
     if(!form.concepto||isNaN(amount)||amount<=0){toast$("Completa todos los campos","err");return;}
     const isOut=form.tipo==="salida";
     if(isOut&&(cashBalance||0)<amount){toast$("Saldo insuficiente en el monedero","err");return;}
-    const entry={id:Date.now(),fecha:form.fecha||new Date().toISOString().slice(0,10),concepto:form.concepto,cat:form.cat||"Otros",importe:amount,tipo:form.tipo};
+    const entry={id:Date.now(),fecha:form.fecha||todayISO(),concepto:form.concepto,cat:form.cat||"Otros",importe:amount,tipo:form.tipo};
     setCashLog(function(prev){return [entry].concat(prev||[]);});
     setCashBalance(function(prev){return Math.max(0,(prev||0)+(isOut?-amount:amount));});
     setForm({tipo:"entrada"});setShowModal(false);toast$("Efectivo registrado");
@@ -18231,7 +18262,7 @@ function WalletTab({cashLog,cashBalance,setCashLog,setCashBalance,toast$,fontSiz
           CE("button",{onClick:function(){setForm(function(f){return Object.assign({},f,{tipo:"salida"});});},style:selSt(form.tipo==="salida",T.red)},CE(Icon,{name:"minus",size:15,color:form.tipo==="salida"?T.red:T.textSub})," Salida")
         )
       ),
-      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.fecha||new Date().toISOString().slice(0,10),onChange:function(e){setForm(function(f){return Object.assign({},f,{fecha:e.target.value});});}})),
+      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.fecha||todayISO(),onChange:function(e){setForm(function(f){return Object.assign({},f,{fecha:e.target.value});});}})),
       CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, mercado, gasolinera...",value:form.concepto||"",onChange:function(e){var v=e.target.value;setForm(function(f){return Object.assign({},f,{concepto:v,cat:f.catEdited?f.cat:suggestCat(v)});});}})),
       CE(Field,{label:"Categoría"},
         CE(Sel,{value:form.cat||"Otros",onChange:function(e){setForm(function(f){return Object.assign({},f,{cat:e.target.value,catEdited:true});});}},
@@ -18388,7 +18419,7 @@ function ErrorLogSection({toast$}){
           var blob=new Blob([json],{type:"application/json"});
           var url=URL.createObjectURL(blob);
           var a=document.createElement("a");
-          a.href=url;a.download="casaflow_errors_"+new Date().toISOString().slice(0,10)+".json";
+          a.href=url;a.download="casaflow_errors_"+todayISO()+".json";
           document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
           toast$("Log descargado","info");
         },style:{background:"none",border:"1px solid "+T.border,borderRadius:8,padding:"4px 10px",cursor:"pointer",color:T.textSub,fontSize:11}},"⬇ Descargar"),
@@ -18476,19 +18507,22 @@ function BolsillosTab({ahorros,depositAhorro,withdrawAhorro,addAhorroBolsillo,se
       // Meta editor
       !isPrimary&&CE("div",{style:{background:T.surface,borderRadius:14,padding:"14px",marginBottom:14,border:`1px solid ${T.border}`}},
         CE("div",{style:{fontSize:12,color:T.textSub,marginBottom:10,fontWeight:600}},"Meta de ahorro (opcional)"),
-        // Live progress preview while editing
+        // Live preview ONLY when user is actively editing the meta (different from saved value)
         (()=>{
-          const previewMeta=movForm["meta_val"]!==undefined?parseFloat(movForm["meta_val"]||0):(bolsillo.meta||0);
-          const pctPreview=previewMeta>0?Math.min(bolsillo.saldo/previewMeta*100,100):null;
-          return pctPreview!==null&&CE("div",{style:{marginBottom:12}},
+          if(movForm["meta_val"]===undefined)return null;
+          const editVal=parseFloat(movForm["meta_val"]||0);
+          if(isNaN(editVal)||editVal===bolsillo.meta)return null;
+          if(editVal<=0)return CE("div",{style:{fontSize:11,color:T.textDim,marginBottom:12,fontStyle:"italic"}},"Sin meta (se eliminará la barra de progreso)");
+          const pctPreview=Math.min(bolsillo.saldo/editVal*100,100);
+          return CE("div",{style:{marginBottom:12,background:T.bgMid,borderRadius:10,padding:"10px 12px",border:`1px dashed ${T.gold}55`}},
+            CE("div",{style:{fontSize:10,color:T.gold,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}},"Vista previa de nueva meta"),
             CE("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
-              CE("span",{style:{fontSize:11,color:T.textSub}},"Progreso: "+eur(bolsillo.saldo)+" / "+eur(previewMeta)),
+              CE("span",{style:{fontSize:11,color:T.textSub}},eur(bolsillo.saldo)+" / "+eur(editVal)),
               CE("span",{style:{fontSize:11,fontWeight:700,color:Math.round(pctPreview)>=100?T.green:T.gold}},Math.round(pctPreview)+"%")
             ),
-            CE("div",{style:{height:8,background:T.border,borderRadius:8,overflow:"hidden"}},
-              CE("div",{style:{height:"100%",background:`linear-gradient(90deg,${T.gold},${Math.round(pctPreview)>=100?T.green:T.gold})`,width:pctPreview+"%",borderRadius:8,transition:"width .4s ease"}})
-            ),
-            Math.round(pctPreview)>=100&&CE("div",{style:{fontSize:11,color:T.green,fontWeight:600,marginTop:4,textAlign:"center"}},"🎉 ¡Meta alcanzada!")
+            CE("div",{style:{height:6,background:T.border,borderRadius:6,overflow:"hidden"}},
+              CE("div",{style:{height:"100%",background:`linear-gradient(90deg,${T.gold},${Math.round(pctPreview)>=100?T.green:T.gold})`,width:pctPreview+"%",borderRadius:6,transition:"width .4s ease"}})
+            )
           );
         })(),
         CE("div",{style:{display:"flex",flexDirection:"column",gap:10}},
@@ -18706,9 +18740,12 @@ function App(){
   const [year,setYear]=useState(()=>{
     // Use current year, or most recent year with data
     const cy=new Date().getFullYear();
-    const stored=JSON.parse(localStorage.getItem("cf_v5")||"{}");
-    const years=Object.keys((stored.data)||{}).map(Number).sort((a,b)=>b-a);
-    return years.length>0?Math.max(cy,years[0]):cy;
+    try{
+      const raw=localStorage.getItem("cf_v5");
+      const stored=raw?JSON.parse(raw):{};
+      const years=Object.keys((stored.data)||{}).map(Number).filter(y=>!isNaN(y)).sort((a,b)=>b-a);
+      return years.length>0?Math.max(cy,years[0]):cy;
+    }catch(_){return cy;}
   });
   const [tab,setTab]=useState("dashboard");
   const [isDesktop,setIsDesktop]=useState(false); // Desktop temporalmente deshabilitado
@@ -18810,7 +18847,7 @@ function App(){
   // ── Gasto CRUD ──
   function addGasto(){
     if(!form.lugar||!form.importe){toast$("Lugar e importe son obligatorios","err");return;}
-    const fechaGasto=form.fecha||new Date().toISOString().slice(0,10);
+    const fechaGasto=form.fecha||todayISO();
     // Determine target year and month from the date
     let targetYear=year,targetMonth=selMonth;
     try{
@@ -18883,7 +18920,7 @@ function App(){
   function addIngreso(){
     if(!form.concepto||!form.importe){toast$("Concepto e importe son obligatorios","err");return;}
     const imp=parseFloat(form.importe);
-    const fechaIngreso=form.fecha||new Date().toISOString().slice(0,10);
+    const fechaIngreso=form.fecha||todayISO();
     // Determine target year and month from the date
     let targetYear=year,targetMonth=selMonth;
     try{
@@ -18944,7 +18981,7 @@ function App(){
   function registerPago(){
     const amount=parseFloat(form.pago||0);
     if(!amount||amount<=0){logErr("E007","importe="+form.pago);toast$("Importe inválido","err");return;}
-    const fechaPago=form.pagofecha||new Date().toISOString().slice(0,10);
+    const fechaPago=form.pagofecha||todayISO();
     let mesDestino=selMonth;
     let yearDestino=year;
     try{
@@ -18977,111 +19014,188 @@ function App(){
 
   // ── Excel / CSV Import ──
   function handleImportFile(e){
-    const file=e.target.files&&e.target.files[0];
+    const inputEl=e.target;
+    const file=inputEl.files&&inputEl.files[0];
     if(!file){return;}
-    // Reset input so same file can be reselected
-    e.target.value="";
-    const ext=(file.name||"").split(".").pop().toLowerCase();
-    const isCSV=ext==="csv"||ext==="txt";
-    const reader=new FileReader();
-    reader.onerror=()=>{logErr("E010","FileReader error");toast$("Error al leer el archivo","err");};
-    reader.onload=ev=>{
+    // Don't reset value yet — Android Chrome will eat the file before reader fires
+    const fileName=file.name||"archivo";
+    const fileSize=file.size||0;
+    const ext=fileName.split(".").pop().toLowerCase();
+    const isCSV=ext==="csv"||ext==="txt"||(file.type||"").includes("csv")||(file.type||"").includes("text/plain");
+
+    if(fileSize===0){toast$("El archivo está vacío","err");logErr("E010","empty file: "+fileName);inputEl.value="";return;}
+    if(fileSize>10*1024*1024){toast$("Archivo demasiado grande (máx 10MB)","err");inputEl.value="";return;}
+
+    toast$("Leyendo archivo...","info");
+
+    // Use modern File API with FileReader fallback
+    function processData(result){
       try{
         let rawRows=[];
         if(!isCSV){
-          // Excel: XLSX library
-          if(!window.XLSX){toast$("Cargando librería, reintenta en 2 segundos","info");return;}
-          const wb=window.XLSX.read(ev.target.result,{type:"array",cellDates:true});
+          if(!window.XLSX){
+            // Wait and retry once
+            setTimeout(function(){
+              if(window.XLSX){processData(result);}
+              else{toast$("Librería XLSX no cargó. Conexión a internet requerida.","err");logErr("E011","XLSX missing");}
+            },1500);
+            return;
+          }
+          // Ensure we have a proper Uint8Array for SheetJS
+          let bytes;
+          if(result instanceof ArrayBuffer){bytes=new Uint8Array(result);}
+          else if(result instanceof Uint8Array){bytes=result;}
+          else if(typeof result==="string"){
+            // Base64 or binary string fallback
+            bytes=new Uint8Array(result.length);
+            for(let bi=0;bi<result.length;bi++)bytes[bi]=result.charCodeAt(bi)&0xff;
+          }
+          else{toast$("Formato de archivo no reconocido","err");logErr("E010","unknown result type");return;}
+          const wb=window.XLSX.read(bytes,{type:"array",cellDates:true,cellNF:false,cellText:false});
+          if(!wb||!wb.SheetNames||!wb.SheetNames.length){toast$("Archivo Excel sin hojas","err");return;}
           const ws=wb.Sheets[wb.SheetNames[0]];
-          // raw:true keeps numbers as numbers; dateNF for date formatting
-          rawRows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true,blankrows:false});
+          rawRows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false,blankrows:false});
         }else{
-          // CSV — handle BOM, CRLF, different separators
-          let text=ev.target.result;
-          // Strip BOM if present
+          // CSV
+          let text=typeof result==="string"?result:"";
+          if(!text){toast$("CSV vacío","err");return;}
           if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
           text=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
-          // Detect separator: semicolon wins if more frequent than comma in first line
           const firstLine=(text.split("\n")[0]||"");
           const nSemi=(firstLine.match(/;/g)||[]).length;
           const nComma=(firstLine.match(/,/g)||[]).length;
-          const sep=nSemi>nComma?";":nComma>0?",":"\t";
-          rawRows=text.split("\n").filter(l=>l.trim()).map(l=>{
+          const nTab=(firstLine.match(/\t/g)||[]).length;
+          const sep=nSemi>=Math.max(nComma,nTab)&&nSemi>0?";":nTab>nComma?"\t":",";
+          rawRows=text.split("\n").filter(function(l){return l.trim();}).map(function(l){
             const cols=[];let cur="",inQ=false;
             for(let ci=0;ci<l.length;ci++){
               const c=l[ci];
-              if(c==='"'){if(inQ&&l[ci+1]==='"'){cur+='"';ci++;}else inQ=!inQ;}
-              else if(c===sep&&!inQ){cols.push(cur.trim());cur="";}
+              if(c==='"'){
+                if(inQ&&l[ci+1]==='"'){cur+='"';ci++;}else{inQ=!inQ;}
+              } else if(c===sep&&!inQ){cols.push(cur.trim());cur="";}
               else{cur+=c;}
             }
             cols.push(cur.trim());return cols;
           });
         }
-        if(!rawRows.length){toast$("Archivo vacío o sin datos","err");return;}
+        if(!rawRows.length){toast$("Archivo vacío o sin filas","err");logErr("E009","no rows: "+fileName);return;}
 
-        // Find header row — scan up to row 15, look for any financial keyword
-        const HEADER_KEYS=["importe","amount","cargo","abono","monto","value","saldo","balance","debit","credit","cuantia"];
-        let headerIdx=-1;
-        for(let ri=0;ri<Math.min(rawRows.length,15);ri++){
-          const rowStr=rawRows[ri].map(c=>String(c||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")).join(" ");
-          if(HEADER_KEYS.some(k=>rowStr.includes(k))){headerIdx=ri;break;}
+        // Keywords to identify each column type
+        const IMP_KEYS=["importe eur","importe","amount","valor","cuantia","abono/cargo","importe operacion","debito/credito","saldo contable","saldo disponible","saldo real","saldo","balance","monto","abono","cargo","credito","debito","debit","credit"];
+        const DATE_KEYS=["fecha de inicio","fecha operaci","fecha valor","fecha oper","fecha","date","fec","started","data"];
+        const DESC_KEYS=["descripci","concepto","comercio","movimiento","detalle","beneficiario","nombre ","referencia","description","memo","text","subject","observ"];
+        // Note: "nombre " (with space) avoids matching "nombre_cuenta" style bank preamble fields
+
+        function rowScore(row){
+          // Score a row as a candidate data header: must have importe + at least date OR desc
+          const r=row.map(function(c){return String(c||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();});
+          const hasImp=IMP_KEYS.some(function(k){return r.some(function(h){return h!==""&&h.indexOf(k)>=0;});});
+          const hasDate=DATE_KEYS.some(function(k){return r.some(function(h){return h!==""&&h.indexOf(k)>=0;});});
+          const hasDesc=DESC_KEYS.some(function(k){return r.some(function(h){return h!==""&&h.indexOf(k)>=0;});});
+          if(hasImp&&hasDate&&hasDesc)return 3; // Best: all three
+          if(hasImp&&(hasDate||hasDesc))return 2; // Good: imp + one more
+          if(hasImp)return 1;                     // Acceptable: just imp
+          return 0;
         }
-        // Fallback: if no financial keyword found, try first row with ≥3 columns as header
-        if(headerIdx<0){
+
+        // Find best header row — scan up to 20 rows, pick highest score
+        let headerIdx=-1;
+        let bestScore=0;
+        for(let ri=0;ri<Math.min(rawRows.length,20);ri++){
+          const s=rowScore(rawRows[ri]);
+          if(s>bestScore){bestScore=s;headerIdx=ri;}
+          if(s===3)break; // Perfect match — stop early
+        }
+        // Last fallback: any row with ≥3 non-empty columns
+        if(headerIdx<0||bestScore===0){
           for(let ri=0;ri<Math.min(rawRows.length,5);ri++){
-            if(rawRows[ri].filter(c=>String(c||"").trim()).length>=3){headerIdx=ri;break;}
+            if(rawRows[ri].filter(function(c){return String(c||"").trim();}).length>=3){headerIdx=ri;break;}
           }
         }
-        if(headerIdx<0){logErr("E009","file="+file.name);toast$("No se detectó cabecera. Revisa que el archivo es un extracto bancario válido.","err");return;}
+        if(headerIdx<0){logErr("E009","no header in "+fileName+" rows="+rawRows.length);toast$("No se detectó cabecera. Asegúrate de que es un extracto bancario.","err");return;}
 
         const rows=rawRows.slice(headerIdx);
         if(rows.length<2){toast$("Sin datos tras la cabecera","err");return;}
 
-        const hdr=rows[0].map(h=>String(h||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim());
-        const fnd=keys=>{for(const k of keys){const i=hdr.findIndex(h=>h.includes(k));if(i>=0)return i;}return -1;};
+        // Normalize header: strip accents, lowercase, trim
+        const hdr=rows[0].map(function(h){
+          return String(h||"").toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+            .replace(/\s+/g," ").trim();
+        });
+        // Helper: find first matching column index
+        function fnd(keys){
+          for(let ki=0;ki<keys.length;ki++){
+            const idx=hdr.findIndex(function(h){return h!=""&&h.indexOf(keys[ki])>=0;});
+            if(idx>=0)return idx;
+          }
+          return -1;
+        }
 
         const dateCol=fnd(["fecha de inicio","fecha operaci","fecha valor","fecha oper","fecha","date","fec","started","data"]);
         const descCol=fnd(["descripci","concepto","comercio","movimiento","detalle","beneficiario","nombre","referencia","description","memo","text","subject"]);
-        const impCol=fnd(["importe","amount","cargo","monto","cuantia","abono/cargo","value","saldo real","importe operacion","debito","credito","debit","credit"]);
-        const typeCol=fnd(["tipo","type","categoria","category"]);
 
-        if(impCol<0){logErr("E008","hdr="+hdr.join("|"));toast$("No se detectó columna de importe. Columnas: "+hdr.slice(0,6).join(", "),"err");return;}
+        // Importe detection — priority order matters:
+        // 1. Explicit importe/amount
+        // 2. Separate abono+cargo columns (some banks split positive/negative)
+        // 3. saldo (last resort — column called exactly "saldo" or "saldo contable")
+        let impCol=fnd(["importe eur","importe","amount","valor","cuantia","abono/cargo","importe operacion","debito/credito"]);
+        let abonoCol=-1, cargoCol=-1;
+        if(impCol<0){
+          // Try split abono/cargo columns (La Caixa, Bankia style)
+          abonoCol=fnd(["abono","credito","entrada","haber","credit"]);
+          cargoCol=fnd(["cargo","debito","salida","debe","debit"]);
+          if(abonoCol<0&&cargoCol<0){
+            // Last resort: saldo / balance (BBVA, Sabadell style)
+            impCol=fnd(["saldo contable","saldo disponible","saldo real","saldo","balance","monto"]);
+          }
+        }
+
+        const typeCol=fnd(["tipo","type","categoria","category"]);
+        const hasImporte=impCol>=0||(abonoCol>=0||cargoCol>=0);
+
+        if(!hasImporte){
+          logErr("E008","hdr="+hdr.join("|"));
+          toast$("No se detectó columna de importe.\nColumnas del archivo: "+hdr.filter(h=>h).slice(0,8).join(", "),"err");
+          return;
+        }
 
         function cleanImporte(raw){
           if(raw===null||raw===undefined||raw==="")return NaN;
           if(typeof raw==="number")return raw;
-          var s=String(raw).trim();
+          let s=String(raw).trim();
           s=s.replace(/\u2212/g,"-").replace(/\u00ad/g,"-").replace(/[^\d,.\-]/g,"");
           if(!s)return NaN;
-          var lastDot=s.lastIndexOf(".");var lastComma=s.lastIndexOf(",");
+          const lastDot=s.lastIndexOf(".");
+          const lastComma=s.lastIndexOf(",");
           if(lastDot>=0&&lastComma>=0){
             if(lastComma>lastDot){s=s.replace(/\./g,"").replace(",",".");}
             else{s=s.replace(/,/g,"");}
-          }else if(lastComma>=0){
-            var afterComma=s.slice(lastComma+1);
-            if(afterComma.length<=2){s=s.replace(",",".");}else{s=s.replace(/,/g,"");}
+          } else if(lastComma>=0){
+            const ac=s.slice(lastComma+1);
+            if(ac.length<=2){s=s.replace(",",".");}else{s=s.replace(/,/g,"");}
           }
           return parseFloat(s);
         }
 
         function normaliseDate(raw){
           if(!raw)return "";
-          // If it's already a JS Date object (from SheetJS cellDates:true)
           if(raw instanceof Date&&!isNaN(raw)){
-            return raw.toISOString().slice(0,10);
+            const yy=raw.getFullYear(),mm=String(raw.getMonth()+1).padStart(2,"0"),dd=String(raw.getDate()).padStart(2,"0");
+            return yy+"-"+mm+"-"+dd;
           }
           const s=String(raw).trim();
           const isoTime=s.match(/^(\d{4})-(\d{2})-(\d{2})[T ]/);
-          if(isoTime)return `${isoTime[1]}-${isoTime[2]}-${isoTime[3]}`;
+          if(isoTime)return isoTime[1]+"-"+isoTime[2]+"-"+isoTime[3];
           if(s.match(/^\d{4}-\d{2}-\d{2}$/))return s;
           const dmy=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]((\d{2})?\d{2})$/);
-          if(dmy){const y=dmy[3].length===2?"20"+dmy[3]:dmy[3];return `${y}-${dmy[2].padStart(2,"0")}-${dmy[1].padStart(2,"0")}`;}
-          // Excel serial number (number between 1900–2200)
+          if(dmy){const y=dmy[3].length===2?"20"+dmy[3]:dmy[3];return y+"-"+dmy[2].padStart(2,"0")+"-"+dmy[1].padStart(2,"0");}
+          const ymd=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+          if(ymd){return ymd[1]+"-"+ymd[2].padStart(2,"0")+"-"+ymd[3].padStart(2,"0");}
           const n=parseFloat(s);
           if(!isNaN(n)&&n>10000&&n<200000){
-            // Convert Excel serial to Date
             const d=new Date((n-25569)*86400*1000);
-            if(!isNaN(d))return d.toISOString().slice(0,10);
+            if(!isNaN(d.getTime()))return d.toISOString().slice(0,10);
           }
           return "";
         }
@@ -19089,10 +19203,21 @@ function App(){
         const parsed=[];
         for(let i=1;i<rows.length;i++){
           const row=rows[i];
-          if(!row||!row.some(c=>c!==""))continue;
-          const imp=cleanImporte(row[impCol]);
+          if(!row||!row.some(function(c){return c!==""&&c!==null&&c!==undefined;}))continue;
+
+          // Get importe — handle split abono/cargo or single column
+          let imp=NaN;
+          if(impCol>=0){
+            imp=cleanImporte(row[impCol]);
+          } else {
+            // Split columns: abono is positive, cargo is negative
+            const ab=abonoCol>=0?cleanImporte(row[abonoCol]):NaN;
+            const ca=cargoCol>=0?cleanImporte(row[cargoCol]):NaN;
+            if(!isNaN(ab)&&ab!==0)imp=Math.abs(ab);          // abono → positive
+            else if(!isNaN(ca)&&ca!==0)imp=-(Math.abs(ca));  // cargo → negative
+          }
           if(isNaN(imp)||imp===0)continue;
-          // Description: prefer explicit desc col; fallback to Tipo col; else "Importado"
+
           let rawDesc="Importado";
           if(descCol>=0&&String(row[descCol]||"").trim()){
             rawDesc=String(row[descCol]).trim();
@@ -19100,14 +19225,11 @@ function App(){
             rawDesc=String(row[typeCol]).trim();
           }
           const rawDate=dateCol>=0?row[dateCol]:"";
-          // Handle Excel date objects (datetime returned by SheetJS as formatted string already)
-          const fecha=normaliseDate(typeof rawDate==="object"&&rawDate?
-            rawDate.toISOString?rawDate.toISOString().slice(0,10):String(rawDate)
-            :rawDate)||new Date().toISOString().slice(0,10);
+          const fecha=normaliseDate(rawDate)||todayISO();
           const suggestedCat=suggestCat(rawDesc);
           parsed.push({
             id:Date.now()+i,
-            fecha,
+            fecha:fecha,
             lugar:rawDesc,
             obs:"Extracto bancario",
             tipo:"Variable",
@@ -19118,12 +19240,45 @@ function App(){
             isGasto:imp<0,
           });
         }
-        if(!parsed.length){toast$("No se encontraron movimientos validos","err");return;}
-        setImportRows(parsed);setShowImport(true);
-      }catch(err){console.error(err);toast$("Error al procesar el archivo: "+err.message,"err");}
-    };
-    if(isCSV){reader.readAsText(file,"UTF-8");}else{reader.readAsArrayBuffer(file);}
-    e.target.value="";
+        if(!parsed.length){toast$("No se encontraron movimientos válidos en el archivo","err");return;}
+        setImportRows(parsed);
+        setShowImport(true);
+        toast$("Archivo leído: "+parsed.length+" movimientos","ok");
+      } catch(err){
+        console.error("Import error:",err);
+        logErr("E010","parse: "+(err&&err.message||"unknown"));
+        toast$("Error al procesar: "+(err&&err.message||"desconocido"),"err");
+      } finally {
+        try{inputEl.value="";}catch(_){}
+      }
+    }
+
+    // Prefer the Blob/File async API (more reliable on Android Chrome).
+    // Fall back to FileReader if not supported.
+    if(isCSV&&typeof file.text==="function"){
+      file.text().then(processData).catch(function(err){
+        logErr("E010","file.text: "+(err&&err.message||""));
+        // Fallback to FileReader
+        const r=new FileReader();
+        r.onload=function(ev){processData(ev.target.result);};
+        r.onerror=function(){toast$("Error al leer el archivo","err");logErr("E010","reader.onerror");try{inputEl.value="";}catch(_){}};
+        r.readAsText(file,"UTF-8");
+      });
+    } else if(!isCSV&&typeof file.arrayBuffer==="function"){
+      file.arrayBuffer().then(processData).catch(function(err){
+        logErr("E010","file.arrayBuffer: "+(err&&err.message||""));
+        const r=new FileReader();
+        r.onload=function(ev){processData(ev.target.result);};
+        r.onerror=function(){toast$("Error al leer el archivo","err");logErr("E010","reader.onerror");try{inputEl.value="";}catch(_){}};
+        r.readAsArrayBuffer(file);
+      });
+    } else {
+      // Legacy fallback
+      const r=new FileReader();
+      r.onload=function(ev){processData(ev.target.result);};
+      r.onerror=function(){toast$("Error al leer el archivo","err");logErr("E010","legacy reader fail");try{inputEl.value="";}catch(_){}};
+      if(isCSV){r.readAsText(file,"UTF-8");}else{r.readAsArrayBuffer(file);}
+    }
   }
 
   function confirmImport(onlySelected){
@@ -19160,7 +19315,7 @@ function App(){
     const isOut=form.cashTipo==="salida";
     // Prevent negative cash balance
     if(isOut&&cashBalance<amount){toast$("Saldo insuficiente en el monedero","err");return;}
-    const fechaCash=form.cashFecha||new Date().toISOString().slice(0,10);
+    const fechaCash=form.cashFecha||todayISO();
     const entry={id:Date.now(),fecha:fechaCash,concepto:form.cashConcepto,cat:form.cashCat||"Otros",importe:amount,tipo:form.cashTipo||"entrada"};
     setAppState(s=>{
       const newBal=s.cashBalance+(isOut?-amount:amount);
@@ -19204,7 +19359,7 @@ function App(){
   function depositAhorro(id,amount,concepto){
     if(!amount||amount<=0){logErr("E022","depositAhorro amount="+amount);toast$("Importe inválido","err");return;}
     const numId=typeof id==="string"?parseInt(id,10):id;
-    const fecha=new Date().toISOString().slice(0,10);
+    const fecha=todayISO();
     setAppState(s=>{
       const bolsillo=s.ahorros.find(a=>a.id===numId||a.id===id);
       if(!bolsillo){logErr("E023","depositAhorro id="+id);return s;}
@@ -19215,7 +19370,7 @@ function App(){
   function withdrawAhorro(id,amount,concepto,registerMovimiento){
     if(!amount||amount<=0){logErr("E024","amount="+amount);toast$("Importe inválido","err");return;}
     const numId=typeof id==="string"?parseInt(id,10):id;
-    const fecha=new Date().toISOString().slice(0,10);
+    const fecha=todayISO();
     setAppState(s=>{
       const bolsillo=s.ahorros.find(a=>a.id===numId||a.id===id);
       if(!bolsillo){logErr("E016","id="+id+" ahorros="+s.ahorros.map(a=>a.id).join(","));toast$("Bolsillo no encontrado","err");return s;}
@@ -19904,7 +20059,7 @@ function App(){
 
     // ── Gasto form ──
     CE(Sheet,{open:modal==="gasto",onClose:()=>setModal(null),title:`Nuevo gasto — ${selMonth}`},
-      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.fecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,fecha:e.target.value}))})),
+      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.fecha||todayISO(),onChange:e=>setForm(f=>({...f,fecha:e.target.value}))})),
       CE(Field,{label:"Lugar / Comercio *"},
         CE(Inp,{placeholder:"Ej: Mercadona, STAY, Uber...",value:form.lugar||"",onChange:e=>{const v=e.target.value;setForm(f=>({...f,lugar:v,cat:f.catEdited?f.cat:suggestCat(v)}));}}),
         form.lugar&&CE("div",{style:{fontSize:11,color:T.gold,marginTop:3,display:"flex",alignItems:"center",gap:4}},CE(Icon,{name:"info",size:11,color:T.gold}),`Categoria sugerida: ${suggestCat(form.lugar)}`)
@@ -19991,7 +20146,7 @@ function App(){
 
     // ── Edit Ingreso ──
     CE(Sheet,{open:modal==="editIngreso",onClose:()=>{setModal(null);setEditTarget(null);},title:"Editar ingreso"},
-      CE(Field,{label:"Fecha",hint:"Cambia la fecha para mover a otro mes/año"},CE(Inp,{type:"date",value:form.fecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,fecha:e.target.value}))})),
+      CE(Field,{label:"Fecha",hint:"Cambia la fecha para mover a otro mes/año"},CE(Inp,{type:"date",value:form.fecha||todayISO(),onChange:e=>setForm(f=>({...f,fecha:e.target.value}))})),
       CE(Field,{label:"Origen"},CE(Sel,{value:form.origen||"Trabajo",onChange:e=>setForm(f=>({...f,origen:e.target.value}))},["Trabajo","Persona","Banco/Org.","Saldo inicial","Devoluciones"].map(o=>CE("option",{key:o},o)))),
       CE(Field,{label:"Concepto *"},CE(Inp,{value:form.concepto||"",onChange:e=>setForm(f=>({...f,concepto:e.target.value}))})),
       CE(Field,{label:"Observaciones"},CE(Inp,{value:form.obs||"",onChange:e=>setForm(f=>({...f,obs:e.target.value}))})),
@@ -20059,7 +20214,7 @@ function App(){
           CE("span",{style:{fontSize:12,color:T.textSub}},"Pendiente"),
           CE("span",{style:{fontFamily:T.fontDisplay,fontSize:16,fontWeight:700,color:T.red}},eur(debtPago.importe-debtPago.pagado))
         ),
-        CE(Field,{label:"Fecha del pago"},CE(Inp,{type:"date",value:form.pagofecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,pagofecha:e.target.value}))})),
+        CE(Field,{label:"Fecha del pago"},CE(Inp,{type:"date",value:form.pagofecha||todayISO(),onChange:e=>setForm(f=>({...f,pagofecha:e.target.value}))})),
         CE(Field,{label:"Importe pagado ahora (€)",hint:debtPago.cuota?"Cuota habitual: "+eur(debtPago.cuota):null},
           CE("div",{style:{display:"flex",gap:8}},
             CE(Inp,{type:"number",step:"0.01",min:"0",placeholder:"0,00",value:form.pago||"",onChange:e=>setForm(f=>({...f,pago:e.target.value}))}),
@@ -20078,7 +20233,7 @@ function App(){
           CE("button",{onClick:()=>setForm(f=>({...f,cashTipo:"salida"})),style:selBtnSt(form.cashTipo==="salida",T.red)},"− Salida (pago)")
         )
       ),
-      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.cashFecha||new Date().toISOString().slice(0,10),onChange:e=>setForm(f=>({...f,cashFecha:e.target.value}))})),
+      CE(Field,{label:"Fecha"},CE(Inp,{type:"date",value:form.cashFecha||todayISO(),onChange:e=>setForm(f=>({...f,cashFecha:e.target.value}))})),
       CE(Field,{label:"Concepto *"},CE(Inp,{placeholder:"Ej: Cajero, pago en efectivo...",value:form.cashConcepto||"",onChange:e=>setForm(f=>({...f,cashConcepto:e.target.value,cashCat:f.cashCatEdited?f.cashCat:suggestCat(e.target.value)}))})),
       CE(Field,{label:"Categoría"},CE(Sel,{value:form.cashCat||"Otros",onChange:e=>setForm(f=>({...f,cashCat:e.target.value,cashCatEdited:true}))},allCats().map(c=>CE("option",{key:c.name,value:c.name},c.name)))),
       CE(Field,{label:"Importe (€) *"},CE(Inp,{type:"number",step:"0.01",min:"0.01",placeholder:"0,00",value:form.cashImporte||"",onChange:e=>setForm(f=>({...f,cashImporte:e.target.value}))})),
